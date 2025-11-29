@@ -82,29 +82,43 @@ func GetTodoByPrefix(db *sql.DB, prefix string) (*models.Todo, error) {
 	return matches[0], nil
 }
 
-// ListTodos returns todos filtered by project, done status, and/or priority
-func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string) ([]*models.Todo, error) {
-	query := `SELECT id, project_id, description, done, priority, notes, created_at, completed_at, due_date
-	          FROM todos WHERE 1=1`
+// ListTodos returns todos filtered by project, done status, priority, and/or tag
+func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string, tag *string) ([]*models.Todo, error) {
+	query := `SELECT DISTINCT t.id, t.project_id, t.description, t.done, t.priority, t.notes, t.created_at, t.completed_at, t.due_date
+	          FROM todos t`
 
 	var args []interface{}
 
+	// Add JOIN if filtering by tag
+	if tag != nil {
+		query += `
+	          LEFT JOIN todo_tags tt ON t.id = tt.todo_id
+	          LEFT JOIN tags tg ON tt.tag_id = tg.id`
+	}
+
+	query += ` WHERE 1=1`
+
 	if projectID != nil {
-		query += " AND project_id = ?"
+		query += " AND t.project_id = ?"
 		args = append(args, projectID.String())
 	}
 
 	if done != nil {
-		query += " AND done = ?"
+		query += " AND t.done = ?"
 		args = append(args, *done)
 	}
 
 	if priority != nil {
-		query += " AND priority = ?"
+		query += " AND t.priority = ?"
 		args = append(args, *priority)
 	}
 
-	query += " ORDER BY created_at DESC"
+	if tag != nil {
+		query += " AND tg.name = ?"
+		args = append(args, *tag)
+	}
+
+	query += " ORDER BY t.created_at DESC"
 
 	rows, err := db.Query(query, args...)
 	if err != nil {

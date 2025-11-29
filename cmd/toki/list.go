@@ -50,8 +50,13 @@ var listCmd = &cobra.Command{
 			priority = &priorityFlag
 		}
 
+		var tag *string
+		if tagFlag, _ := cmd.Flags().GetString("tag"); tagFlag != "" {
+			tag = &tagFlag
+		}
+
 		// Get todos
-		todos, err := db.ListTodos(dbConn, projectID, done, priority)
+		todos, err := db.ListTodos(dbConn, projectID, done, priority, tag)
 		if err != nil {
 			return fmt.Errorf("failed to list todos: %w", err)
 		}

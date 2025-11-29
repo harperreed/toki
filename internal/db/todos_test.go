@@ -92,7 +92,7 @@ func TestListTodos(t *testing.T) {
 	CreateTodo(db, todo1)
 	CreateTodo(db, todo2)
 
-	todos, err := ListTodos(db, &project.ID, nil, nil)
+	todos, err := ListTodos(db, &project.ID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to list todos: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestListTodosFilterDone(t *testing.T) {
 	CreateTodo(db, todo2)
 
 	doneFilter := false
-	todos, err := ListTodos(db, nil, &doneFilter, nil)
+	todos, err := ListTodos(db, nil, &doneFilter, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to list todos: %v", err)
 	}
@@ -127,6 +127,38 @@ func TestListTodosFilterDone(t *testing.T) {
 	}
 	if todos[0].Done {
 		t.Error("Should only return pending todos")
+	}
+}
+
+func TestListTodosFilterByTag(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	project := models.NewProject("test", nil)
+	CreateProject(db, project)
+
+	todo1 := models.NewTodo(project.ID, "backend todo")
+	todo2 := models.NewTodo(project.ID, "frontend todo")
+	CreateTodo(db, todo1)
+	CreateTodo(db, todo2)
+
+	// Tag only todo1 with "backend"
+	AddTagToTodo(db, todo1.ID, "backend")
+	AddTagToTodo(db, todo2.ID, "frontend")
+
+	// Filter by backend tag
+	tagFilter := "backend"
+	todos, err := ListTodos(db, nil, nil, nil, &tagFilter)
+	if err != nil {
+		t.Fatalf("Failed to list todos by tag: %v", err)
+	}
+
+	if len(todos) != 1 {
+		t.Errorf("Expected 1 todo with backend tag, got %d", len(todos))
+	}
+
+	if todos[0].Description != "backend todo" {
+		t.Error("Wrong todo returned for tag filter")
 	}
 }
 
