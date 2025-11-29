@@ -1,0 +1,30 @@
+# Binaries
+toki
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage.txt
+*.cover
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
