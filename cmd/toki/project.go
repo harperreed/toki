@@ -82,10 +82,65 @@ var projectListCmd = &cobra.Command{
 	},
 }
 
+var projectSetPathCmd = &cobra.Command{
+	Use:     "set-path <name> <path>",
+	Aliases: []string{"sp"},
+	Short:   "Set directory path for a project",
+	Args:    cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		pathArg := args[1]
+
+		project, err := db.GetProjectByName(dbConn, name)
+		if err != nil {
+			return fmt.Errorf("project not found: %w", err)
+		}
+
+		normalized, err := git.NormalizePath(pathArg)
+		if err != nil {
+			return fmt.Errorf("invalid path: %w", err)
+		}
+
+		if err := db.UpdateProjectPath(dbConn, project.ID, &normalized); err != nil {
+			return fmt.Errorf("failed to update path: %w", err)
+		}
+
+		color.Green("✓ Updated path for '%s'", name)
+		fmt.Printf("  Path: %s\n", normalized)
+
+		return nil
+	},
+}
+
+var projectRemoveCmd = &cobra.Command{
+	Use:     "remove <name>",
+	Aliases: []string{"rm", "r"},
+	Short:   "Remove a project",
+	Args:    cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+
+		project, err := db.GetProjectByName(dbConn, name)
+		if err != nil {
+			return fmt.Errorf("project not found: %w", err)
+		}
+
+		if err := db.DeleteProject(dbConn, project.ID); err != nil {
+			return fmt.Errorf("failed to delete project: %w", err)
+		}
+
+		color.Yellow("✓ Removed project '%s' and all its todos", name)
+
+		return nil
+	},
+}
+
 func init() {
 	projectAddCmd.Flags().String("path", "", "directory path to associate with project")
 
 	projectCmd.AddCommand(projectAddCmd)
 	projectCmd.AddCommand(projectListCmd)
+	projectCmd.AddCommand(projectSetPathCmd)
+	projectCmd.AddCommand(projectRemoveCmd)
 	rootCmd.AddCommand(projectCmd)
 }
