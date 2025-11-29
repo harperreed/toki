@@ -50,7 +50,10 @@ func FormatTodo(todo *models.Todo, tags []*models.Tag) string {
 
 	if todo.DueDate != nil {
 		dueStr := todo.DueDate.Format("2006-01-02")
-		if todo.DueDate.Before(time.Now()) {
+		// Compare dates only (not time) - truncate to start of day
+		today := time.Now().Truncate(24 * time.Hour)
+		dueDay := todo.DueDate.Truncate(24 * time.Hour)
+		if dueDay.Before(today) {
 			dueStr = red.Sprint(dueStr + " (overdue)")
 		}
 		metadata = append(metadata, "Due: "+dueStr)
