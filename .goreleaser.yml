@@ -78,11 +78,11 @@ changelog:
 
 brews:
   - repository:
-      owner: harper
+      owner: harperreed
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/harper/toki
+    homepage: https://github.com/harperreed/toki
     description: "A super simple git-aware todo manager"
     license: MIT
     commit_author:
