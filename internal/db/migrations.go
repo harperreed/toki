@@ -57,13 +57,13 @@ func runMigrations(db *sql.DB) error {
 
 	// Migration: Add updated_at column if it doesn't exist
 	// Check if column exists first
-	var columnExists bool
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('todos') WHERE name='updated_at'`).Scan(&columnExists)
+	var columnCount int
+	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('todos') WHERE name='updated_at'`).Scan(&columnCount)
 	if err != nil {
 		return fmt.Errorf("failed to check for updated_at column: %w", err)
 	}
 
-	if !columnExists {
+	if columnCount == 0 {
 		// Add the column with default value of created_at for existing rows
 		_, err = db.Exec(`ALTER TABLE todos ADD COLUMN updated_at DATETIME`)
 		if err != nil {
