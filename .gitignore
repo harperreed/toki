@@ -28,3 +28,5 @@ coverage.txt
 *.db
 *.db-shm
 *.db-wal
+# Added by goreleaser init:
+dist/
