@@ -41,6 +41,15 @@ func (s *Server) registerResources() {
 
 	// Query resource (custom filters)
 	s.registerQueryResource()
+
+	// Statistics and analytics
+	s.registerStatsResource()
+
+	// TODO(v2): Project-specific todos resource (toki://projects/{project-id}/todos)
+	// The MCP Go SDK v1.1.0 doesn't support URI templates for resources with path parameters.
+	// This would require matching URIs like toki://projects/abc123.../todos and extracting
+	// the project-id parameter. For v1, use the list_todos tool with project_id parameter,
+	// or filter all todos client-side. Future SDK versions may add URI template support.
 }
 
 func (s *Server) registerProjectsResource() {
@@ -360,4 +369,183 @@ func (s *Server) buildTodoResourceLinks(
 	}
 
 	return links
+}
+
+func (s *Server) registerStatsResource() {
+	s.mcp.AddResource(&mcp.Resource{
+		URI:         "toki://stats",
+		Name:        "Summary Statistics",
+		Description: "Overview of todo statistics including totals, pending/completed counts, overdue items, breakdown by priority and project, and oldest pending todo",
+		MIMEType:    "application/json",
+	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		stats, err := s.calculateStats()
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate stats: %w", err)
+		}
+
+		resourceData := ResourceData{
+			Metadata: ResourceMetadata{
+				Timestamp:   time.Now(),
+				Count:       0, // Stats don't have a count
+				ResourceURI: "toki://stats",
+			},
+			Data: stats,
+			Links: map[string]string{
+				"all_todos": "toki://todos",
+				"pending":   "toki://todos/pending",
+				"overdue":   "toki://todos/overdue",
+				"projects":  "toki://projects",
+			},
+		}
+
+		jsonBytes, err := json.MarshalIndent(resourceData, "", "  ")
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal resource data: %w", err)
+		}
+
+		return &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{
+				{
+					URI:      req.Params.URI,
+					MIMEType: "application/json",
+					Text:     string(jsonBytes),
+				},
+			},
+		}, nil
+	})
+}
+
+// StatsData represents the statistics summary.
+type StatsData struct {
+	Summary       StatsSummary       `json:"summary"`
+	ByPriority    map[string]int     `json:"by_priority"`
+	ByProject     []ProjectStats     `json:"by_project"`
+	OldestPending *OldestPendingTodo `json:"oldest_pending,omitempty"`
+}
+
+// StatsSummary contains overall todo counts.
+type StatsSummary struct {
+	TotalTodos int `json:"total_todos"`
+	Pending    int `json:"pending"`
+	Completed  int `json:"completed"`
+	Overdue    int `json:"overdue"`
+}
+
+// ProjectStats contains per-project todo counts.
+type ProjectStats struct {
+	ProjectID   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	TodoCount   int    `json:"todo_count"`
+}
+
+// OldestPendingTodo represents the oldest incomplete todo.
+type OldestPendingTodo struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	AgeDays     int    `json:"age_days"`
+}
+
+//nolint:funlen // Stats calculation aggregates multiple data sources in a single pass
+func (s *Server) calculateStats() (*StatsData, error) {
+	// Fetch all todos
+	allTodos, err := db.ListTodos(s.db, nil, nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list todos: %w", err)
+	}
+
+	// Fetch all projects
+	projects, err := db.ListProjects(s.db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	// Calculate summary stats
+	summary := StatsSummary{
+		TotalTodos: len(allTodos),
+	}
+
+	priorityCounts := make(map[string]int)
+	projectCounts := make(map[uuid.UUID]int)
+	var oldestPending *models.Todo
+	now := time.Now()
+
+	for _, todo := range allTodos {
+		// Count by completion status
+		if todo.Done {
+			summary.Completed++
+		} else {
+			summary.Pending++
+
+			// Track oldest pending
+			if oldestPending == nil || todo.CreatedAt.Before(oldestPending.CreatedAt) {
+				oldestPending = todo
+			}
+		}
+
+		// Count overdue (not done and past due date)
+		if !todo.Done && todo.DueDate != nil && todo.DueDate.Before(now) {
+			summary.Overdue++
+		}
+
+		// Count by priority
+		priority := "none"
+		if todo.Priority != nil {
+			priority = *todo.Priority
+		}
+		priorityCounts[priority]++
+
+		// Count by project
+		projectCounts[todo.ProjectID]++
+	}
+
+	// Build by_priority map (only include priorities that exist)
+	byPriority := make(map[string]int)
+	for priority, count := range priorityCounts {
+		byPriority[priority] = count
+	}
+
+	// Build by_project array (sorted by count, descending)
+	projectStatsMap := make(map[uuid.UUID]*ProjectStats)
+	for _, proj := range projects {
+		if count, ok := projectCounts[proj.ID]; ok {
+			projectStatsMap[proj.ID] = &ProjectStats{
+				ProjectID:   proj.ID.String(),
+				ProjectName: proj.Name,
+				TodoCount:   count,
+			}
+		}
+	}
+
+	// Convert to sorted slice
+	byProject := make([]ProjectStats, 0, len(projectStatsMap))
+	for _, stats := range projectStatsMap {
+		byProject = append(byProject, *stats)
+	}
+
+	// Sort by todo count (descending)
+	for i := 0; i < len(byProject)-1; i++ {
+		for j := i + 1; j < len(byProject); j++ {
+			if byProject[j].TodoCount > byProject[i].TodoCount {
+				byProject[i], byProject[j] = byProject[j], byProject[i]
+			}
+		}
+	}
+
+	// Build oldest pending info
+	var oldestPendingData *OldestPendingTodo
+	if oldestPending != nil {
+		ageDays := int(now.Sub(oldestPending.CreatedAt).Hours() / 24)
+		oldestPendingData = &OldestPendingTodo{
+			ID:          oldestPending.ID.String(),
+			Description: oldestPending.Description,
+			AgeDays:     ageDays,
+		}
+	}
+
+	return &StatsData{
+		Summary:       summary,
+		ByPriority:    byPriority,
+		ByProject:     byProject,
+		OldestPending: oldestPendingData,
+	}, nil
 }
