@@ -25,8 +25,14 @@ var (
 func FormatTodo(todo *models.Todo, tags []*models.Tag) string {
 	var builder strings.Builder
 
-	// First line: ID + Priority + Description
+	// First line: ID + Done Status + Priority + Description
 	builder.WriteString("  ")
+
+	// Show checkmark for completed todos
+	if todo.Done {
+		builder.WriteString("✓ ")
+	}
+
 	builder.WriteString(faint.Sprint(todo.ID.String()[:6]))
 	builder.WriteString("  ")
 

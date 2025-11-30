@@ -44,6 +44,10 @@ var listCmd = &cobra.Command{
 		} else if cmd.Flags().Changed("pending") {
 			pendingVal := false
 			done = &pendingVal
+		} else {
+			// Default: show only pending todos
+			pendingVal := false
+			done = &pendingVal
 		}
 
 		if priorityFlag, _ := cmd.Flags().GetString("priority"); priorityFlag != "" {
