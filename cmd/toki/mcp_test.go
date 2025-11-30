@@ -7,27 +7,27 @@ import (
 	"testing"
 )
 
-func TestServeCommand(t *testing.T) {
+func TestMCPCommand(t *testing.T) {
 	t.Run("command is registered", func(t *testing.T) {
-		// Find serve command in root command
-		cmd, _, err := rootCmd.Find([]string{"serve"})
+		// Find mcp command in root command
+		cmd, _, err := rootCmd.Find([]string{"mcp"})
 		if err != nil {
-			t.Fatalf("serve command not found: %v", err)
+			t.Fatalf("mcp command not found: %v", err)
 		}
 
-		if cmd.Name() != "serve" {
-			t.Errorf("expected command name 'serve', got '%s'", cmd.Name())
+		if cmd.Name() != "mcp" {
+			t.Errorf("expected command name 'mcp', got '%s'", cmd.Name())
 		}
 	})
 
 	t.Run("has correct short description", func(t *testing.T) {
-		cmd, _, err := rootCmd.Find([]string{"serve"})
+		cmd, _, err := rootCmd.Find([]string{"mcp"})
 		if err != nil {
-			t.Fatalf("serve command not found: %v", err)
+			t.Fatalf("mcp command not found: %v", err)
 		}
 
 		if cmd.Short == "" {
-			t.Error("serve command should have a short description")
+			t.Error("mcp command should have a short description")
 		}
 
 		// Should mention MCP and stdio
@@ -38,13 +38,13 @@ func TestServeCommand(t *testing.T) {
 	})
 
 	t.Run("has long description", func(t *testing.T) {
-		cmd, _, err := rootCmd.Find([]string{"serve"})
+		cmd, _, err := rootCmd.Find([]string{"mcp"})
 		if err != nil {
-			t.Fatalf("serve command not found: %v", err)
+			t.Fatalf("mcp command not found: %v", err)
 		}
 
 		if cmd.Long == "" {
-			t.Error("serve command should have a long description")
+			t.Error("mcp command should have a long description")
 		}
 	})
 
@@ -57,14 +57,14 @@ func TestServeCommand(t *testing.T) {
 		commands := rootCmd.Commands()
 		found := false
 		for _, cmd := range commands {
-			if cmd.Name() == "serve" {
+			if cmd.Name() == "mcp" {
 				found = true
 				break
 			}
 		}
 
 		if !found {
-			t.Error("serve command should appear in root command's available commands")
+			t.Error("mcp command should appear in root command's available commands")
 		}
 	})
 }

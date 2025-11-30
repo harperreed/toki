@@ -43,7 +43,7 @@ For other MCP clients that support stdio transport:
 
 ```bash
 # Start the server manually
-toki serve
+toki mcp
 ```
 
 The server will communicate via stdin/stdout using the JSON-RPC protocol.
@@ -430,7 +430,7 @@ which toki
 toki --version
 
 # Try running manually
-toki serve
+toki mcp
 
 # Check for error messages in Claude Desktop logs (if using Claude)
 # macOS: ~/Library/Logs/Claude/mcp*.log
@@ -454,7 +454,7 @@ sqlite3 ~/.config/toki/toki.db "SELECT * FROM projects;"
 1. Verify MCP config is valid JSON
 2. Restart MCP client completely
 3. Check client logs for connection errors
-4. Try running `toki serve` manually to see startup errors
+4. Try running `toki mcp` manually to see startup errors
 
 ## Testing Checklist
 
@@ -516,7 +516,7 @@ If you encounter problems:
 2. Capture the exact input used
 3. Record the error message or unexpected behavior
 4. Check server logs if available
-5. Try reproducing with `toki serve` running manually
+5. Try reproducing with `toki mcp` running manually
 6. Verify database state with CLI commands
 
 Report issues with this information to help debugging.

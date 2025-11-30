@@ -51,7 +51,7 @@ Any MCP-compatible client can connect to toki. The server runs in stdio mode, co
 To test the server manually:
 
 ```bash
-toki serve
+toki mcp
 ```
 
 The server will wait for MCP protocol messages on stdin and respond on stdout.
@@ -709,7 +709,7 @@ Keep high-priority items under 30% of backlog. If everything is high priority, n
 
 ### Server Won't Start
 
-**Symptom:** `toki serve` command fails or hangs
+**Symptom:** `toki mcp` command fails or hangs
 
 **Possible causes:**
 1. Database corruption
@@ -732,7 +732,7 @@ rm ~/.local/share/toki/toki.db
 toki project add default
 
 # Test server manually
-toki serve
+toki mcp
 # Should wait for input, press Ctrl+C to exit
 ```
 

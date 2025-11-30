@@ -18,10 +18,10 @@ Add Model Context Protocol (MCP) server capabilities to toki, making it a genera
 
 ### Command Structure
 
-Add `toki serve` command to existing CLI binary:
+Add `toki mcp` command to existing CLI binary:
 
 ```bash
-toki serve [--stdio]  # stdio is default and only mode
+toki mcp [--stdio]  # stdio is default and only mode
 ```
 
 ### Package Organization

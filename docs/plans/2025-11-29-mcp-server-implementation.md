@@ -4,7 +4,7 @@
 
 **Goal:** Add Model Context Protocol server to toki, enabling AI agents to manage todos via tools, resources, and prompts.
 
-**Architecture:** Add `toki serve` command that runs MCP server in stdio mode. Server uses Go MCP SDK and shares existing database/models. Implements layered API: core CRUD tools, workflow tools, pre-built resources, query resources, and workflow prompts.
+**Architecture:** Add `toki mcp` command that runs MCP server in stdio mode. Server uses Go MCP SDK and shares existing database/models. Implements layered API: core CRUD tools, workflow tools, pre-built resources, query resources, and workflow prompts.
 
 **Tech Stack:** Go 1.24, MCP Go SDK, existing SQLite database, Cobra CLI framework
 
@@ -162,7 +162,7 @@ Server initialization connects to database and will register capabilities."
 
 ---
 
-## Task 3: Add `toki serve` Command
+## Task 3: Add `toki mcp` Command
 
 **Files:**
 - Create: `cmd/toki/serve.go`
@@ -260,7 +260,7 @@ Expected: Build succeeds
 **Step 3: Test command exists**
 
 ```bash
-./toki serve --help
+./toki mcp --help
 ```
 
 Expected: Shows serve command help text
@@ -269,7 +269,7 @@ Expected: Shows serve command help text
 
 ```bash
 git add cmd/toki/serve.go
-git commit -m "feat: add 'toki serve' command for MCP server
+git commit -m "feat: add 'toki mcp' command for MCP server
 
 Implements stdio-based MCP server command that shares database with CLI.
 Includes graceful shutdown on SIGINT/SIGTERM."
@@ -1827,7 +1827,7 @@ Expected: PASS
 go build -o toki ./cmd/toki
 
 # Start serve in background, kill after 2 seconds
-timeout 2s ./toki serve || [ $? -eq 124 ]
+timeout 2s ./toki mcp || [ $? -eq 124 ]
 ```
 
 Expected: Exits cleanly after timeout (code 124)
@@ -1864,7 +1864,7 @@ Toki provides a Model Context Protocol (MCP) server that enables AI agents to ma
 ### Running the Server
 
 \`\`\`bash
-toki serve
+toki mcp
 \`\`\`
 
 The server runs in stdio mode, suitable for MCP client integration.
@@ -2056,7 +2056,7 @@ Toki includes a Model Context Protocol server for AI agent integration.
 
 \`\`\`bash
 # Start MCP server
-toki serve
+toki mcp
 \`\`\`
 
 Agents can use toki for:
@@ -2091,7 +2091,7 @@ This implementation plan creates a complete MCP server for toki with:
 **Completed:**
 1. ✅ MCP Go SDK integration
 2. ✅ Package structure (server, tools, resources, prompts)
-3. ✅ `toki serve` command
+3. ✅ `toki mcp` command
 4. ✅ Core CRUD tools (add, list, mark done/undone, delete, update)
 5. ✅ Project management tools
 6. ✅ Workflow tools (breakdown, analyze, report, search, suggest)
