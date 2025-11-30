@@ -462,7 +462,7 @@ Use this checklist to track your manual testing:
 
 - [ ] Server starts without errors
 - [ ] All 11 tools are discoverable
-- [ ] All 6 resources are discoverable
+- [ ] All 7 resources are discoverable
 - [ ] All 6 prompts are discoverable
 - [ ] Can create project via `add_project`
 - [ ] Can list projects via `list_projects`
