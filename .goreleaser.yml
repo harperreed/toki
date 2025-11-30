@@ -14,11 +14,10 @@ builds:
     main: ./cmd/toki
     env:
       - CGO_ENABLED=1
-    # Due to CGO requirements, builds must be done natively on each platform
-    # Use --single-target flag to build only for current platform
-    # CI workflow runs on both macOS and Linux to create all binaries
+    # Build for macOS only due to CGO requirements for SQLite
+    # Cross-compilation to Linux with CGO is complex and requires Docker
+    # For Linux builds, users can build from source or we can add Docker-based builds later
     goos:
-      - linux
       - darwin
     goarch:
       - amd64
