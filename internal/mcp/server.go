@@ -6,6 +6,7 @@ package mcp
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -18,6 +19,10 @@ type Server struct {
 
 // NewServer creates MCP server with all capabilities.
 func NewServer(db *sql.DB) (*Server, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection is required")
+	}
+
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "toki",
@@ -41,8 +46,5 @@ func NewServer(db *sql.DB) (*Server, error) {
 
 // Serve starts the MCP server in stdio mode.
 func (s *Server) Serve(ctx context.Context) error {
-	// TODO: Implement actual stdio transport
-	// For now, just block until context is cancelled
-	<-ctx.Done()
-	return ctx.Err()
+	return s.mcp.Run(ctx, &mcp.StdioTransport{})
 }
