@@ -72,6 +72,15 @@ type ListTodosOutput struct {
 func (s *Server) registerTools() {
 	s.registerAddTodoTool()
 	s.registerListTodosTool()
+	s.registerMarkDoneTool()
+	s.registerMarkUndoneTool()
+	s.registerDeleteTodoTool()
+	s.registerUpdateTodoTool()
+	s.registerAddTagToTodoTool()
+	s.registerRemoveTagFromTodoTool()
+	s.registerAddProjectTool()
+	s.registerListProjectsTool()
+	s.registerDeleteProjectTool()
 }
 
 func (s *Server) registerAddTodoTool() {
@@ -402,4 +411,533 @@ func buildAppliedFilters(input ListTodosInput) map[string]any {
 	}
 
 	return filters
+}
+
+// MarkDoneInput defines the input parameters for the mark_done tool.
+type MarkDoneInput struct {
+	TodoID string `json:"todo_id"`
+}
+
+func (s *Server) registerMarkDoneTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "mark_done",
+		Description: `Mark a todo as complete by its UUID. Use this when a task is finished to track completion and update status. The todo will be marked as done with a completion timestamp. Returns the updated todo with all metadata so you can verify the change. To find the UUID of a todo, use list_todos first.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"todo_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the todo to mark as complete. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+			},
+			"required": []string{"todo_id"},
+		},
+	}, s.handleMarkDone)
+}
+
+func (s *Server) handleMarkDone(_ context.Context, req *mcp.CallToolRequest, input MarkDoneInput) (*mcp.CallToolResult, TodoOutput, error) {
+	todoID, err := uuid.Parse(input.TodoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
+	}
+
+	todo, err := db.GetTodoByID(s.db, todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
+	}
+
+	todo.MarkDone()
+	if err := db.UpdateTodo(s.db, todo); err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)
+	}
+
+	return buildTodoResult(s.db, todo)
+}
+
+// MarkUndoneInput defines the input parameters for the mark_undone tool.
+type MarkUndoneInput struct {
+	TodoID string `json:"todo_id"`
+}
+
+func (s *Server) registerMarkUndoneTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "mark_undone",
+		Description: `Reopen a completed todo by marking it as incomplete. Use this when a task needs to be revisited or wasn't actually finished. The todo will be marked as not done and the completion timestamp will be cleared. Returns the updated todo with all metadata. To find the UUID of a todo, use list_todos with done=true to see completed todos.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"todo_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the todo to reopen. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+			},
+			"required": []string{"todo_id"},
+		},
+	}, s.handleMarkUndone)
+}
+
+func (s *Server) handleMarkUndone(_ context.Context, req *mcp.CallToolRequest, input MarkUndoneInput) (*mcp.CallToolResult, TodoOutput, error) {
+	todoID, err := uuid.Parse(input.TodoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
+	}
+
+	todo, err := db.GetTodoByID(s.db, todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
+	}
+
+	todo.MarkUndone()
+	if err := db.UpdateTodo(s.db, todo); err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)
+	}
+
+	return buildTodoResult(s.db, todo)
+}
+
+// buildTodoResult builds a TodoOutput from a todo model.
+func buildTodoResult(database *sql.DB, todo *models.Todo) (*mcp.CallToolResult, TodoOutput, error) {
+	tags, err := db.GetTodoTags(database, todo.ID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to get tags: %w", err)
+	}
+
+	tagNames := make([]string, len(tags))
+	for i, tag := range tags {
+		tagNames[i] = tag.Name
+	}
+
+	output := TodoOutput{
+		ID:          todo.ID.String(),
+		ProjectID:   todo.ProjectID.String(),
+		Description: todo.Description,
+		Done:        todo.Done,
+		Priority:    todo.Priority,
+		Notes:       todo.Notes,
+		Tags:        tagNames,
+		CreatedAt:   todo.CreatedAt,
+		UpdatedAt:   todo.CreatedAt, // TODO: add UpdatedAt to model
+		DueDate:     todo.DueDate,
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
+}
+
+// DeleteTodoInput defines the input parameters for the delete_todo tool.
+type DeleteTodoInput struct {
+	TodoID string `json:"todo_id"`
+}
+
+// DeleteTodoOutput defines the output structure for the delete_todo tool.
+type DeleteTodoOutput struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	TodoID  string `json:"todo_id"`
+}
+
+func (s *Server) registerDeleteTodoTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "delete_todo",
+		Description: `Permanently delete a todo by its UUID. Use this when a task is no longer relevant or was created by mistake. This action cannot be undone. The todo and all its associations (tags, etc.) will be removed from the database. Returns success confirmation with the deleted todo's ID. To find the UUID of a todo, use list_todos first.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"todo_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the todo to delete permanently. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+			},
+			"required": []string{"todo_id"},
+		},
+	}, s.handleDeleteTodo)
+}
+
+func (s *Server) handleDeleteTodo(_ context.Context, req *mcp.CallToolRequest, input DeleteTodoInput) (*mcp.CallToolResult, DeleteTodoOutput, error) {
+	todoID, err := uuid.Parse(input.TodoID)
+	if err != nil {
+		return nil, DeleteTodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
+	}
+
+	// Check if todo exists first
+	_, err = db.GetTodoByID(s.db, todoID)
+	if err != nil {
+		return nil, DeleteTodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
+	}
+
+	if err := db.DeleteTodo(s.db, todoID); err != nil {
+		return nil, DeleteTodoOutput{}, fmt.Errorf("failed to delete todo: %w", err)
+	}
+
+	output := DeleteTodoOutput{
+		Success: true,
+		Message: fmt.Sprintf("Todo '%s' successfully deleted", input.TodoID),
+		TodoID:  input.TodoID,
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
+}
+
+// UpdateTodoInput defines the input parameters for the update_todo tool.
+type UpdateTodoInput struct {
+	TodoID      string  `json:"todo_id"`
+	Description *string `json:"description,omitempty"`
+	Priority    *string `json:"priority,omitempty"`
+	Notes       *string `json:"notes,omitempty"`
+	DueDate     *string `json:"due_date,omitempty"`
+}
+
+func (s *Server) registerUpdateTodoTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "update_todo",
+		Description: `Update a todo's metadata including description, priority, notes, and due date. All update fields are optional - only provide the fields you want to change. Use this for modifying existing todos without recreating them. Returns the updated todo with all metadata. To find the UUID of a todo, use list_todos first.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"todo_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the todo to update. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+				"description": map[string]interface{}{
+					"type":        "string",
+					"description": "New description for the todo. Example: 'implement user authentication with OAuth'",
+				},
+				"priority": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"low", "medium", "high"},
+					"description": "New priority level. Must be one of: low, medium, high. Example: 'high'",
+				},
+				"notes": map[string]interface{}{
+					"type":        "string",
+					"description": "New notes or additional context. Example: 'Reviewed with team, needs to support Google and GitHub'",
+				},
+				"due_date": map[string]interface{}{
+					"type":        "string",
+					"format":      "date-time",
+					"description": "New due date in ISO 8601 format. Example: '2025-12-15T15:04:05Z'",
+				},
+			},
+			"required": []string{"todo_id"},
+		},
+	}, s.handleUpdateTodo)
+}
+
+func (s *Server) handleUpdateTodo(_ context.Context, req *mcp.CallToolRequest, input UpdateTodoInput) (*mcp.CallToolResult, TodoOutput, error) {
+	todoID, err := uuid.Parse(input.TodoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
+	}
+
+	todo, err := db.GetTodoByID(s.db, todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
+	}
+
+	// Validate priority if provided
+	if err := validatePriority(input.Priority); err != nil {
+		return nil, TodoOutput{}, err
+	}
+
+	// Parse due date if provided
+	var dueDate *time.Time
+	if input.DueDate != nil {
+		dueDate, err = parseDueDate(input.DueDate)
+		if err != nil {
+			return nil, TodoOutput{}, err
+		}
+	}
+
+	// Update fields if provided
+	if input.Description != nil {
+		todo.Description = *input.Description
+	}
+	if input.Priority != nil {
+		todo.Priority = input.Priority
+	}
+	if input.Notes != nil {
+		todo.Notes = input.Notes
+	}
+	if input.DueDate != nil {
+		todo.DueDate = dueDate
+	}
+
+	if err := db.UpdateTodo(s.db, todo); err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)
+	}
+
+	return buildTodoResult(s.db, todo)
+}
+
+// AddTagToTodoInput defines the input parameters for the add_tag_to_todo tool.
+type AddTagToTodoInput struct {
+	TodoID  string `json:"todo_id"`
+	TagName string `json:"tag_name"`
+}
+
+func (s *Server) registerAddTagToTodoTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "add_tag_to_todo",
+		Description: `Associate a tag with a todo for categorization and filtering. Tags are labels that help organize and find related todos. If the tag doesn't exist, it will be created automatically. A todo can have multiple tags. Returns the updated todo with all its tags. Use list_todos with tag filter to find todos by tag.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"todo_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the todo to tag. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+				"tag_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the tag to add. Tags are case-sensitive. Example: 'bug', 'urgent', 'backend'",
+				},
+			},
+			"required": []string{"todo_id", "tag_name"},
+		},
+	}, s.handleAddTagToTodo)
+}
+
+func (s *Server) handleAddTagToTodo(_ context.Context, req *mcp.CallToolRequest, input AddTagToTodoInput) (*mcp.CallToolResult, TodoOutput, error) {
+	todoID, err := uuid.Parse(input.TodoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
+	}
+
+	// Check if todo exists
+	todo, err := db.GetTodoByID(s.db, todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
+	}
+
+	if err := db.AddTagToTodo(s.db, todoID, input.TagName); err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to add tag: %w", err)
+	}
+
+	return buildTodoResult(s.db, todo)
+}
+
+// RemoveTagFromTodoInput defines the input parameters for the remove_tag_from_todo tool.
+type RemoveTagFromTodoInput struct {
+	TodoID  string `json:"todo_id"`
+	TagName string `json:"tag_name"`
+}
+
+func (s *Server) registerRemoveTagFromTodoTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "remove_tag_from_todo",
+		Description: `Remove a tag association from a todo. Use this when a tag no longer applies to a task. This only removes the association between the tag and the todo - the tag itself remains in the system for use with other todos. Returns the updated todo with remaining tags. If the tag wasn't associated with the todo, the operation succeeds silently.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"todo_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the todo to untag. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+				"tag_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the tag to remove. Tags are case-sensitive. Example: 'bug', 'urgent'",
+				},
+			},
+			"required": []string{"todo_id", "tag_name"},
+		},
+	}, s.handleRemoveTagFromTodo)
+}
+
+func (s *Server) handleRemoveTagFromTodo(_ context.Context, req *mcp.CallToolRequest, input RemoveTagFromTodoInput) (*mcp.CallToolResult, TodoOutput, error) {
+	todoID, err := uuid.Parse(input.TodoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
+	}
+
+	// Check if todo exists
+	todo, err := db.GetTodoByID(s.db, todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
+	}
+
+	if err := db.RemoveTagFromTodo(s.db, todoID, input.TagName); err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to remove tag: %w", err)
+	}
+
+	return buildTodoResult(s.db, todo)
+}
+
+// AddProjectInput defines the input parameters for the add_project tool.
+type AddProjectInput struct {
+	Name string  `json:"name"`
+	Path *string `json:"path,omitempty"`
+}
+
+// ProjectOutput defines the output structure for project operations.
+type ProjectOutput struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Path      *string   `json:"path,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (s *Server) registerAddProjectTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "add_project",
+		Description: `Create a new project to organize todos. Projects are containers for related tasks and can optionally be associated with a git repository path. Use this to separate work for different codebases, clients, or areas of focus. Returns the created project with a UUID that you can use when adding todos. All projects can be listed with list_projects.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "Name of the project. Should be unique and descriptive. Example: 'backend-api', 'mobile-app', 'client-acme'",
+				},
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional filesystem path to git repository or project directory. Example: '/home/user/projects/backend-api'",
+				},
+			},
+			"required": []string{"name"},
+		},
+	}, s.handleAddProject)
+}
+
+func (s *Server) handleAddProject(_ context.Context, req *mcp.CallToolRequest, input AddProjectInput) (*mcp.CallToolResult, ProjectOutput, error) {
+	project := models.NewProject(input.Name, input.Path)
+	if err := db.CreateProject(s.db, project); err != nil {
+		return nil, ProjectOutput{}, fmt.Errorf("failed to create project: %w", err)
+	}
+
+	output := ProjectOutput{
+		ID:        project.ID.String(),
+		Name:      project.Name,
+		Path:      project.DirectoryPath,
+		CreatedAt: project.CreatedAt,
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
+}
+
+// ListProjectsInput defines the input parameters for the list_projects tool (empty).
+type ListProjectsInput struct{}
+
+// ListProjectsOutput defines the output structure for the list_projects tool.
+type ListProjectsOutput struct {
+	Projects []ProjectOutput `json:"projects"`
+	Count    int             `json:"count"`
+}
+
+func (s *Server) registerListProjectsTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "list_projects",
+		Description: `Retrieve all projects in the system. Projects organize todos into logical groups and can be associated with git repositories. Use this to see available projects before adding todos or to get project UUIDs for filtering. Returns an array of projects sorted by name with full metadata including IDs, names, paths, and creation timestamps.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+		},
+	}, s.handleListProjects)
+}
+
+func (s *Server) handleListProjects(_ context.Context, req *mcp.CallToolRequest, input ListProjectsInput) (*mcp.CallToolResult, ListProjectsOutput, error) {
+	projects, err := db.ListProjects(s.db)
+	if err != nil {
+		return nil, ListProjectsOutput{}, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	projectOutputs := make([]ProjectOutput, 0, len(projects))
+	for _, project := range projects {
+		projectOutputs = append(projectOutputs, ProjectOutput{
+			ID:        project.ID.String(),
+			Name:      project.Name,
+			Path:      project.DirectoryPath,
+			CreatedAt: project.CreatedAt,
+		})
+	}
+
+	output := ListProjectsOutput{
+		Projects: projectOutputs,
+		Count:    len(projectOutputs),
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
+}
+
+// DeleteProjectInput defines the input parameters for the delete_project tool.
+type DeleteProjectInput struct {
+	ProjectID string `json:"project_id"`
+}
+
+// DeleteProjectOutput defines the output structure for the delete_project tool.
+type DeleteProjectOutput struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	ProjectID string `json:"project_id"`
+}
+
+func (s *Server) registerDeleteProjectTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "delete_project",
+		Description: `Permanently delete a project by its UUID. This action cannot be undone. WARNING: Deleting a project will also delete all associated todos due to database CASCADE constraints. Use this when a project is no longer needed and you want to clean up all related tasks. Returns success confirmation. To find the UUID of a project, use list_projects first.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"project_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Full UUID of the project to delete. Example: 'abc12345-1234-1234-1234-123456789abc'",
+				},
+			},
+			"required": []string{"project_id"},
+		},
+	}, s.handleDeleteProject)
+}
+
+func (s *Server) handleDeleteProject(_ context.Context, req *mcp.CallToolRequest, input DeleteProjectInput) (*mcp.CallToolResult, DeleteProjectOutput, error) {
+	projectID, err := uuid.Parse(input.ProjectID)
+	if err != nil {
+		return nil, DeleteProjectOutput{}, fmt.Errorf("invalid project_id: must be a valid UUID. Error: %w", err)
+	}
+
+	// Check if project exists first
+	_, err = db.GetProjectByID(s.db, projectID)
+	if err != nil {
+		return nil, DeleteProjectOutput{}, fmt.Errorf("project not found: no project exists with ID '%s'. Use list_projects to see available projects", input.ProjectID)
+	}
+
+	if err := db.DeleteProject(s.db, projectID); err != nil {
+		return nil, DeleteProjectOutput{}, fmt.Errorf("failed to delete project: %w", err)
+	}
+
+	output := DeleteProjectOutput{
+		Success:   true,
+		Message:   fmt.Sprintf("Project '%s' and all associated todos successfully deleted", input.ProjectID),
+		ProjectID: input.ProjectID,
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
 }

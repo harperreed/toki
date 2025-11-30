@@ -1,6 +1,7 @@
 // ABOUTME: Tests for MCP tool definitions and handlers
 // ABOUTME: Validates tool registration, parameter parsing, and error handling
 
+//nolint:goconst // Test literals should remain inline for readability
 package mcp
 
 import (
@@ -803,4 +804,686 @@ func createTestTodoInDB(t *testing.T, database *sql.DB, projectID uuid.UUID, des
 // Helper function to create a string pointer.
 func stringPtr(s string) *string {
 	return &s
+}
+
+// Helper function to parse generic tool result.
+func parseToolResult(t *testing.T, result *mcp.CallToolResult) map[string]interface{} {
+	t.Helper()
+
+	if result.IsError {
+		t.Fatalf("tool returned error: %v", result.Content)
+	}
+
+	if len(result.Content) == 0 {
+		t.Fatal("tool should return content")
+	}
+
+	textContent, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatal("Expected text content")
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(textContent.Text), &data); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
+
+	return data
+}
+
+// TestMarkDone tests the mark_done tool.
+func TestMarkDoneSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "mark_done",
+		Arguments: map[string]any{"todo_id": todo.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call mark_done: %v", err)
+	}
+
+	updatedTodo := parseToolResult(t, result)
+	if !updatedTodo["done"].(bool) {
+		t.Error("Todo should be marked as done")
+	}
+
+	if updatedTodo["id"] != todo.ID.String() {
+		t.Errorf("Expected todo ID %s, got %v", todo.ID, updatedTodo["id"])
+	}
+}
+
+func TestMarkDoneInvalidUUID(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "mark_done",
+		Arguments: map[string]any{"todo_id": "not-a-uuid"},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call mark_done: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo_id is invalid UUID")
+	}
+}
+
+func TestMarkDoneNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "mark_done",
+		Arguments: map[string]any{"todo_id": uuid.New().String()},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call mark_done: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo doesn't exist")
+	}
+}
+
+// TestMarkUndone tests the mark_undone tool.
+func TestMarkUndoneSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+	todo.MarkDone()
+	if err := db.UpdateTodo(database, todo); err != nil {
+		t.Fatalf("Failed to mark todo done: %v", err)
+	}
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "mark_undone",
+		Arguments: map[string]any{"todo_id": todo.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call mark_undone: %v", err)
+	}
+
+	updatedTodo := parseToolResult(t, result)
+	if updatedTodo["done"].(bool) {
+		t.Error("Todo should be marked as not done")
+	}
+}
+
+func TestMarkUndoneNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "mark_undone",
+		Arguments: map[string]any{"todo_id": uuid.New().String()},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call mark_undone: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo doesn't exist")
+	}
+}
+
+// TestDeleteTodo tests the delete_todo tool.
+func TestDeleteTodoSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "delete_todo",
+		Arguments: map[string]any{"todo_id": todo.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call delete_todo: %v", err)
+	}
+
+	response := parseToolResult(t, result)
+	if !response["success"].(bool) {
+		t.Error("Expected success=true")
+	}
+
+	// Verify todo is actually deleted
+	_, err = db.GetTodoByID(database, todo.ID)
+	if err == nil {
+		t.Error("Todo should be deleted from database")
+	}
+}
+
+func TestDeleteTodoNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "delete_todo",
+		Arguments: map[string]any{"todo_id": uuid.New().String()},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call delete_todo: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo doesn't exist")
+	}
+}
+
+func TestDeleteTodoInvalidUUID(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "delete_todo",
+		Arguments: map[string]any{"todo_id": "not-a-uuid"},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call delete_todo: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo_id is invalid UUID")
+	}
+}
+
+// TestUpdateTodo tests the update_todo tool.
+func TestUpdateTodoAllFields(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "original description", nil, nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	newDueDate := time.Now().Add(48 * time.Hour).Format(time.RFC3339)
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "update_todo",
+		Arguments: map[string]any{
+			"todo_id":     todo.ID.String(),
+			"description": "updated description",
+			"priority":    "high",
+			"notes":       "some notes",
+			"due_date":    newDueDate,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call update_todo: %v", err)
+	}
+
+	updated := parseToolResult(t, result)
+	if updated["description"] != "updated description" {
+		t.Errorf("Expected updated description, got %v", updated["description"])
+	}
+	if updated["priority"] != "high" {
+		t.Errorf("Expected priority 'high', got %v", updated["priority"])
+	}
+	if updated["notes"] != "some notes" {
+		t.Errorf("Expected notes to be set, got %v", updated["notes"])
+	}
+	if updated["due_date"] == nil {
+		t.Error("Expected due_date to be set")
+	}
+}
+
+func TestUpdateTodoPartialFields(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "original", stringPtr("low"), nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "update_todo",
+		Arguments: map[string]any{
+			"todo_id":  todo.ID.String(),
+			"priority": "high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call update_todo: %v", err)
+	}
+
+	updated := parseToolResult(t, result)
+	if updated["description"] != "original" {
+		t.Error("Description should not change")
+	}
+	if updated["priority"] != "high" {
+		t.Errorf("Expected priority 'high', got %v", updated["priority"])
+	}
+}
+
+func TestUpdateTodoInvalidPriority(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	_ = createTestTodoInDB(t, database, project.ID, "test", nil, nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	_, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "update_todo",
+		Arguments: map[string]any{
+			"todo_id":  uuid.New().String(),
+			"priority": "super-urgent",
+		},
+	})
+
+	// MCP SDK validates enum values before calling handler, so we expect a protocol error
+	if err == nil {
+		t.Error("Expected error when priority is invalid")
+	}
+}
+
+func TestUpdateTodoNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "update_todo",
+		Arguments: map[string]any{
+			"todo_id":  uuid.New().String(),
+			"priority": "high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call update_todo: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo doesn't exist")
+	}
+}
+
+// TestAddTagToTodo tests the add_tag_to_todo tool.
+func TestAddTagToTodoSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "add_tag_to_todo",
+		Arguments: map[string]any{
+			"todo_id":  todo.ID.String(),
+			"tag_name": "bug",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call add_tag_to_todo: %v", err)
+	}
+
+	updated := parseToolResult(t, result)
+	tags := updated["tags"].([]interface{})
+	if len(tags) != 1 {
+		t.Errorf("Expected 1 tag, got %d", len(tags))
+	}
+	if tags[0] != "bug" {
+		t.Errorf("Expected tag 'bug', got %v", tags[0])
+	}
+}
+
+func TestAddTagToTodoMultipleTags(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+	if err := db.AddTagToTodo(database, todo.ID, "urgent"); err != nil {
+		t.Fatalf("Failed to add initial tag: %v", err)
+	}
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "add_tag_to_todo",
+		Arguments: map[string]any{
+			"todo_id":  todo.ID.String(),
+			"tag_name": "bug",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call add_tag_to_todo: %v", err)
+	}
+
+	updated := parseToolResult(t, result)
+	tags := updated["tags"].([]interface{})
+	if len(tags) != 2 {
+		t.Errorf("Expected 2 tags, got %d", len(tags))
+	}
+}
+
+func TestAddTagToTodoNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "add_tag_to_todo",
+		Arguments: map[string]any{
+			"todo_id":  uuid.New().String(),
+			"tag_name": "bug",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call add_tag_to_todo: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo doesn't exist")
+	}
+}
+
+// TestRemoveTagFromTodo tests the remove_tag_from_todo tool.
+func TestRemoveTagFromTodoSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+	if err := db.AddTagToTodo(database, todo.ID, "bug"); err != nil {
+		t.Fatalf("Failed to add tag: %v", err)
+	}
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "remove_tag_from_todo",
+		Arguments: map[string]any{
+			"todo_id":  todo.ID.String(),
+			"tag_name": "bug",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call remove_tag_from_todo: %v", err)
+	}
+
+	updated := parseToolResult(t, result)
+	// Tags might be nil or empty array
+	if tags, ok := updated["tags"].([]interface{}); ok {
+		if len(tags) != 0 {
+			t.Errorf("Expected 0 tags, got %d", len(tags))
+		}
+	} else if updated["tags"] != nil {
+		t.Errorf("Expected tags to be nil or empty array, got %v", updated["tags"])
+	}
+}
+
+func TestRemoveTagFromTodoNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "remove_tag_from_todo",
+		Arguments: map[string]any{
+			"todo_id":  uuid.New().String(),
+			"tag_name": "bug",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call remove_tag_from_todo: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when todo doesn't exist")
+	}
+}
+
+// TestAddProject tests the add_project tool.
+func TestAddProjectSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "add_project",
+		Arguments: map[string]any{
+			"name": "test-project",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call add_project: %v", err)
+	}
+
+	project := parseToolResult(t, result)
+	if project["name"] != "test-project" {
+		t.Errorf("Expected name 'test-project', got %v", project["name"])
+	}
+
+	if _, err := uuid.Parse(project["id"].(string)); err != nil {
+		t.Errorf("Project ID should be valid UUID: %v", err)
+	}
+}
+
+func TestAddProjectWithPath(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "add_project",
+		Arguments: map[string]any{
+			"name": "test-project",
+			"path": "/home/user/projects/test",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call add_project: %v", err)
+	}
+
+	project := parseToolResult(t, result)
+	if project["path"] != "/home/user/projects/test" {
+		t.Errorf("Expected path '/home/user/projects/test', got %v", project["path"])
+	}
+}
+
+// TestListProjects tests the list_projects tool.
+func TestListProjectsSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	_ = createTestProject(t, database)
+	_ = createTestProject(t, database)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_projects",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call list_projects: %v", err)
+	}
+
+	response := parseToolResult(t, result)
+	projects := response["projects"].([]interface{})
+	if len(projects) < 2 {
+		t.Errorf("Expected at least 2 projects, got %d", len(projects))
+	}
+}
+
+func TestListProjectsEmpty(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_projects",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call list_projects: %v", err)
+	}
+
+	response := parseToolResult(t, result)
+	projects := response["projects"].([]interface{})
+	if len(projects) != 0 {
+		t.Errorf("Expected 0 projects, got %d", len(projects))
+	}
+}
+
+// TestDeleteProject tests the delete_project tool.
+func TestDeleteProjectSuccess(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "delete_project",
+		Arguments: map[string]any{
+			"project_id": project.ID.String(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call delete_project: %v", err)
+	}
+
+	response := parseToolResult(t, result)
+	if !response["success"].(bool) {
+		t.Error("Expected success=true")
+	}
+
+	// Verify project is actually deleted
+	_, err = db.GetProjectByID(database, project.ID)
+	if err == nil {
+		t.Error("Project should be deleted from database")
+	}
+}
+
+func TestDeleteProjectNotFound(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	result, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "delete_project",
+		Arguments: map[string]any{
+			"project_id": uuid.New().String(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call delete_project: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("Expected error result when project doesn't exist")
+	}
+}
+
+func TestDeleteProjectCascadesTodos(t *testing.T) {
+	database := setupTestDB(t)
+	defer func() { _ = database.Close() }()
+
+	project := createTestProject(t, database)
+	todo := createTestTodoInDB(t, database, project.ID, "test todo", nil, nil)
+
+	ts := setupTestSession(t, database)
+	defer ts.cleanup()
+
+	ctx := context.Background()
+	_, err := ts.session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "delete_project",
+		Arguments: map[string]any{
+			"project_id": project.ID.String(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to call delete_project: %v", err)
+	}
+
+	// Verify todos are also deleted
+	_, err = db.GetTodoByID(database, todo.ID)
+	if err == nil {
+		t.Error("Todos should be deleted when project is deleted (cascade)")
+	}
 }
