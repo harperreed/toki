@@ -26,6 +26,7 @@ type Todo struct {
 	Priority    *string
 	Notes       *string
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	CompletedAt *time.Time
 	DueDate     *time.Time
 }
@@ -52,26 +53,30 @@ func NewProject(name string, directoryPath *string) *Project {
 	}
 }
 
-// NewTodo creates a new todo with generated UUID and timestamp.
+// NewTodo creates a new todo with generated UUID and timestamps.
 func NewTodo(projectID uuid.UUID, description string) *Todo {
+	now := time.Now()
 	return &Todo{
 		ID:          uuid.New(),
 		ProjectID:   projectID,
 		Description: description,
 		Done:        false,
-		CreatedAt:   time.Now(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 }
 
 // MarkDone marks a todo as complete.
 func (t *Todo) MarkDone() {
-	t.Done = true
 	now := time.Now()
+	t.Done = true
 	t.CompletedAt = &now
+	t.UpdatedAt = now
 }
 
 // MarkUndone marks a todo as incomplete.
 func (t *Todo) MarkUndone() {
 	t.Done = false
 	t.CompletedAt = nil
+	t.UpdatedAt = time.Now()
 }

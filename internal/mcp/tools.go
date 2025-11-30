@@ -368,7 +368,7 @@ func buildListTodosResult(database *sql.DB, todos []*models.Todo, input ListTodo
 			Notes:       todo.Notes,
 			Tags:        tagNames,
 			CreatedAt:   todo.CreatedAt,
-			UpdatedAt:   todo.CreatedAt, // TODO: add UpdatedAt to model
+			UpdatedAt:   todo.UpdatedAt,
 			DueDate:     todo.DueDate,
 		})
 	}
@@ -516,7 +516,7 @@ func buildTodoResult(database *sql.DB, todo *models.Todo) (*mcp.CallToolResult, 
 		Notes:       todo.Notes,
 		Tags:        tagNames,
 		CreatedAt:   todo.CreatedAt,
-		UpdatedAt:   todo.CreatedAt, // TODO: add UpdatedAt to model
+		UpdatedAt:   todo.UpdatedAt,
 		DueDate:     todo.DueDate,
 	}
 
@@ -673,6 +673,9 @@ func (s *Server) handleUpdateTodo(_ context.Context, req *mcp.CallToolRequest, i
 	if input.DueDate != nil {
 		todo.DueDate = dueDate
 	}
+
+	// Update the timestamp
+	todo.UpdatedAt = time.Now()
 
 	if err := db.UpdateTodo(s.db, todo); err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)

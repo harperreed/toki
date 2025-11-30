@@ -14,8 +14,8 @@ import (
 
 // CreateTodo inserts a new todo into the database.
 func CreateTodo(db *sql.DB, todo *models.Todo) error {
-	query := `INSERT INTO todos (id, project_id, description, done, priority, notes, created_at, completed_at, due_date)
-	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO todos (id, project_id, description, done, priority, notes, created_at, updated_at, completed_at, due_date)
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := db.Exec(query,
 		todo.ID.String(),
@@ -25,6 +25,7 @@ func CreateTodo(db *sql.DB, todo *models.Todo) error {
 		todo.Priority,
 		todo.Notes,
 		todo.CreatedAt,
+		todo.UpdatedAt,
 		todo.CompletedAt,
 		todo.DueDate,
 	)
@@ -37,7 +38,7 @@ func CreateTodo(db *sql.DB, todo *models.Todo) error {
 
 // GetTodoByID retrieves a todo by its UUID.
 func GetTodoByID(db *sql.DB, id uuid.UUID) (*models.Todo, error) {
-	query := `SELECT id, project_id, description, done, priority, notes, created_at, completed_at, due_date
+	query := `SELECT id, project_id, description, done, priority, notes, created_at, updated_at, completed_at, due_date
 	          FROM todos WHERE id = ?`
 
 	return scanTodo(db.QueryRow(query, id.String()))
@@ -49,7 +50,7 @@ func GetTodoByPrefix(db *sql.DB, prefix string) (*models.Todo, error) {
 		return nil, fmt.Errorf("prefix must be at least 6 characters")
 	}
 
-	query := `SELECT id, project_id, description, done, priority, notes, created_at, completed_at, due_date
+	query := `SELECT id, project_id, description, done, priority, notes, created_at, updated_at, completed_at, due_date
 	          FROM todos WHERE id LIKE ?`
 
 	rows, err := db.Query(query, prefix+"%")
@@ -84,7 +85,7 @@ func GetTodoByPrefix(db *sql.DB, prefix string) (*models.Todo, error) {
 
 // ListTodos returns todos filtered by project, done status, priority, and/or tag.
 func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string, tag *string) ([]*models.Todo, error) {
-	query := `SELECT DISTINCT t.id, t.project_id, t.description, t.done, t.priority, t.notes, t.created_at, t.completed_at, t.due_date
+	query := `SELECT DISTINCT t.id, t.project_id, t.description, t.done, t.priority, t.notes, t.created_at, t.updated_at, t.completed_at, t.due_date
 	          FROM todos t`
 
 	var args []interface{}
@@ -141,7 +142,7 @@ func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string, t
 // UpdateTodo updates an existing todo.
 func UpdateTodo(db *sql.DB, todo *models.Todo) error {
 	query := `UPDATE todos
-	          SET description = ?, done = ?, priority = ?, notes = ?, completed_at = ?, due_date = ?
+	          SET description = ?, done = ?, priority = ?, notes = ?, updated_at = ?, completed_at = ?, due_date = ?
 	          WHERE id = ?`
 
 	_, err := db.Exec(query,
@@ -149,6 +150,7 @@ func UpdateTodo(db *sql.DB, todo *models.Todo) error {
 		todo.Done,
 		todo.Priority,
 		todo.Notes,
+		todo.UpdatedAt,
 		todo.CompletedAt,
 		todo.DueDate,
 		todo.ID.String(),
@@ -183,6 +185,7 @@ func scanTodo(row *sql.Row) (*models.Todo, error) {
 		&todo.Priority,
 		&todo.Notes,
 		&todo.CreatedAt,
+		&todo.UpdatedAt,
 		&todo.CompletedAt,
 		&todo.DueDate,
 	)
@@ -213,6 +216,7 @@ func scanTodoFromRows(rows *sql.Rows) (*models.Todo, error) {
 		&todo.Priority,
 		&todo.Notes,
 		&todo.CreatedAt,
+		&todo.UpdatedAt,
 		&todo.CompletedAt,
 		&todo.DueDate,
 	)

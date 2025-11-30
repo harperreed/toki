@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS todos (
 	priority TEXT,
 	notes TEXT,
 	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
 	completed_at DATETIME,
 	due_date DATETIME,
 	FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -48,9 +49,33 @@ CREATE INDEX IF NOT EXISTS idx_projects_directory_path ON projects(directory_pat
 `
 
 func runMigrations(db *sql.DB) error {
+	// Run the main schema
 	_, err := db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
+
+	// Migration: Add updated_at column if it doesn't exist
+	// Check if column exists first
+	var columnExists bool
+	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('todos') WHERE name='updated_at'`).Scan(&columnExists)
+	if err != nil {
+		return fmt.Errorf("failed to check for updated_at column: %w", err)
+	}
+
+	if !columnExists {
+		// Add the column with default value of created_at for existing rows
+		_, err = db.Exec(`ALTER TABLE todos ADD COLUMN updated_at DATETIME`)
+		if err != nil {
+			return fmt.Errorf("failed to add updated_at column: %w", err)
+		}
+
+		// Set updated_at to created_at for existing rows
+		_, err = db.Exec(`UPDATE todos SET updated_at = created_at WHERE updated_at IS NULL`)
+		if err != nil {
+			return fmt.Errorf("failed to populate updated_at column: %w", err)
+		}
+	}
+
 	return nil
 }

@@ -148,7 +148,7 @@ func (s *Server) registerTodosHighPriorityResource() {
 		Description: "List all todos marked with high priority, regardless of completion status. Important work items that need focus.",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		priority := "high"
+		priority := "high" //nolint:goconst // Priority values are data, not constants
 		return s.handleTodoResource(ctx, req, nil, nil, &priority, nil, false)
 	})
 }
