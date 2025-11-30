@@ -12,52 +12,52 @@ import (
 )
 
 var doneCmd = &cobra.Command{
-	Use:     "done <uuid-prefix>",
+	Use:     "done <uuid-prefix> [uuid-prefix...]",
 	Aliases: []string{"d"},
-	Short:   "Mark a todo as done",
-	Args:    cobra.ExactArgs(1),
+	Short:   "Mark todos as done",
+	Args:    cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prefix := args[0]
+		for _, prefix := range args {
+			todo, err := db.GetTodoByPrefix(dbConn, prefix)
+			if err != nil {
+				return err
+			}
 
-		todo, err := db.GetTodoByPrefix(dbConn, prefix)
-		if err != nil {
-			return err
+			todo.MarkDone()
+
+			if err := db.UpdateTodo(dbConn, todo); err != nil {
+				return fmt.Errorf("failed to update todo: %w", err)
+			}
+
+			color.Green("✓ Marked todo as done")
+			fmt.Printf("  %s %s\n", prefix, todo.Description)
 		}
-
-		todo.MarkDone()
-
-		if err := db.UpdateTodo(dbConn, todo); err != nil {
-			return fmt.Errorf("failed to update todo: %w", err)
-		}
-
-		color.Green("✓ Marked todo as done")
-		fmt.Printf("  %s\n", todo.Description)
 
 		return nil
 	},
 }
 
 var undoneCmd = &cobra.Command{
-	Use:     "undone <uuid-prefix>",
+	Use:     "undone <uuid-prefix> [uuid-prefix...]",
 	Aliases: []string{"ud"},
-	Short:   "Mark a todo as not done",
-	Args:    cobra.ExactArgs(1),
+	Short:   "Mark todos as not done",
+	Args:    cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prefix := args[0]
+		for _, prefix := range args {
+			todo, err := db.GetTodoByPrefix(dbConn, prefix)
+			if err != nil {
+				return err
+			}
 
-		todo, err := db.GetTodoByPrefix(dbConn, prefix)
-		if err != nil {
-			return err
+			todo.MarkUndone()
+
+			if err := db.UpdateTodo(dbConn, todo); err != nil {
+				return fmt.Errorf("failed to update todo: %w", err)
+			}
+
+			color.Yellow("✓ Marked todo as not done")
+			fmt.Printf("  %s %s\n", prefix, todo.Description)
 		}
-
-		todo.MarkUndone()
-
-		if err := db.UpdateTodo(dbConn, todo); err != nil {
-			return fmt.Errorf("failed to update todo: %w", err)
-		}
-
-		color.Yellow("✓ Marked todo as not done")
-		fmt.Printf("  %s\n", todo.Description)
 
 		return nil
 	},
