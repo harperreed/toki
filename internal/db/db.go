@@ -12,11 +12,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// InitDB initializes the database connection and runs migrations
+// InitDB initializes the database connection and runs migrations.
 func InitDB(dbPath string) (*sql.DB, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 
@@ -28,20 +28,20 @@ func InitDB(dbPath string) (*sql.DB, error) {
 
 	// Enable foreign keys
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
 	// Run migrations
 	if err := runMigrations(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return db, nil
 }
 
-// GetDefaultDBPath returns the default database path following XDG standards
+// GetDefaultDBPath returns the default database path following XDG standards.
 func GetDefaultDBPath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

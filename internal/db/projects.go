@@ -11,7 +11,7 @@ import (
 	"github.com/harper/toki/internal/models"
 )
 
-// CreateProject inserts a new project into the database
+// CreateProject inserts a new project into the database.
 func CreateProject(db *sql.DB, project *models.Project) error {
 	query := `INSERT INTO projects (id, name, directory_path, created_at) VALUES (?, ?, ?, ?)`
 	_, err := db.Exec(query, project.ID.String(), project.Name, project.DirectoryPath, project.CreatedAt)
@@ -21,7 +21,7 @@ func CreateProject(db *sql.DB, project *models.Project) error {
 	return nil
 }
 
-// GetProjectByID retrieves a project by its UUID
+// GetProjectByID retrieves a project by its UUID.
 func GetProjectByID(db *sql.DB, id uuid.UUID) (*models.Project, error) {
 	query := `SELECT id, name, directory_path, created_at FROM projects WHERE id = ?`
 
@@ -40,7 +40,7 @@ func GetProjectByID(db *sql.DB, id uuid.UUID) (*models.Project, error) {
 	return &project, nil
 }
 
-// GetProjectByName retrieves a project by its name
+// GetProjectByName retrieves a project by its name.
 func GetProjectByName(db *sql.DB, name string) (*models.Project, error) {
 	query := `SELECT id, name, directory_path, created_at FROM projects WHERE name = ?`
 
@@ -59,7 +59,7 @@ func GetProjectByName(db *sql.DB, name string) (*models.Project, error) {
 	return &project, nil
 }
 
-// GetProjectByPath retrieves a project by its directory path
+// GetProjectByPath retrieves a project by its directory path.
 func GetProjectByPath(db *sql.DB, path string) (*models.Project, error) {
 	query := `SELECT id, name, directory_path, created_at FROM projects WHERE directory_path = ?`
 
@@ -78,7 +78,7 @@ func GetProjectByPath(db *sql.DB, path string) (*models.Project, error) {
 	return &project, nil
 }
 
-// ListProjects returns all projects
+// ListProjects returns all projects.
 func ListProjects(db *sql.DB) ([]*models.Project, error) {
 	query := `SELECT id, name, directory_path, created_at FROM projects ORDER BY name`
 
@@ -86,7 +86,7 @@ func ListProjects(db *sql.DB) ([]*models.Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list projects: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var projects []*models.Project
 	for rows.Next() {
@@ -104,7 +104,7 @@ func ListProjects(db *sql.DB) ([]*models.Project, error) {
 	return projects, nil
 }
 
-// UpdateProjectPath updates the directory path for a project
+// UpdateProjectPath updates the directory path for a project.
 func UpdateProjectPath(db *sql.DB, id uuid.UUID, path *string) error {
 	query := `UPDATE projects SET directory_path = ? WHERE id = ?`
 	_, err := db.Exec(query, path, id.String())
@@ -114,7 +114,7 @@ func UpdateProjectPath(db *sql.DB, id uuid.UUID, path *string) error {
 	return nil
 }
 
-// DeleteProject deletes a project (cascades to todos)
+// DeleteProject deletes a project (cascades to todos).
 func DeleteProject(db *sql.DB, id uuid.UUID) error {
 	query := `DELETE FROM projects WHERE id = ?`
 	_, err := db.Exec(query, id.String())

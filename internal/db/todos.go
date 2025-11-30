@@ -12,7 +12,7 @@ import (
 	"github.com/harper/toki/internal/models"
 )
 
-// CreateTodo inserts a new todo into the database
+// CreateTodo inserts a new todo into the database.
 func CreateTodo(db *sql.DB, todo *models.Todo) error {
 	query := `INSERT INTO todos (id, project_id, description, done, priority, notes, created_at, completed_at, due_date)
 	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -35,7 +35,7 @@ func CreateTodo(db *sql.DB, todo *models.Todo) error {
 	return nil
 }
 
-// GetTodoByID retrieves a todo by its UUID
+// GetTodoByID retrieves a todo by its UUID.
 func GetTodoByID(db *sql.DB, id uuid.UUID) (*models.Todo, error) {
 	query := `SELECT id, project_id, description, done, priority, notes, created_at, completed_at, due_date
 	          FROM todos WHERE id = ?`
@@ -43,7 +43,7 @@ func GetTodoByID(db *sql.DB, id uuid.UUID) (*models.Todo, error) {
 	return scanTodo(db.QueryRow(query, id.String()))
 }
 
-// GetTodoByPrefix retrieves a todo by UUID prefix (minimum 6 characters)
+// GetTodoByPrefix retrieves a todo by UUID prefix (minimum 6 characters).
 func GetTodoByPrefix(db *sql.DB, prefix string) (*models.Todo, error) {
 	if len(prefix) < 6 {
 		return nil, fmt.Errorf("prefix must be at least 6 characters")
@@ -56,7 +56,7 @@ func GetTodoByPrefix(db *sql.DB, prefix string) (*models.Todo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query todos: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []*models.Todo
 	for rows.Next() {
@@ -82,7 +82,7 @@ func GetTodoByPrefix(db *sql.DB, prefix string) (*models.Todo, error) {
 	return matches[0], nil
 }
 
-// ListTodos returns todos filtered by project, done status, priority, and/or tag
+// ListTodos returns todos filtered by project, done status, priority, and/or tag.
 func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string, tag *string) ([]*models.Todo, error) {
 	query := `SELECT DISTINCT t.id, t.project_id, t.description, t.done, t.priority, t.notes, t.created_at, t.completed_at, t.due_date
 	          FROM todos t`
@@ -124,7 +124,7 @@ func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string, t
 	if err != nil {
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var todos []*models.Todo
 	for rows.Next() {
@@ -138,7 +138,7 @@ func ListTodos(db *sql.DB, projectID *uuid.UUID, done *bool, priority *string, t
 	return todos, nil
 }
 
-// UpdateTodo updates an existing todo
+// UpdateTodo updates an existing todo.
 func UpdateTodo(db *sql.DB, todo *models.Todo) error {
 	query := `UPDATE todos
 	          SET description = ?, done = ?, priority = ?, notes = ?, completed_at = ?, due_date = ?
@@ -160,7 +160,7 @@ func UpdateTodo(db *sql.DB, todo *models.Todo) error {
 	return nil
 }
 
-// DeleteTodo deletes a todo
+// DeleteTodo deletes a todo.
 func DeleteTodo(db *sql.DB, id uuid.UUID) error {
 	query := `DELETE FROM todos WHERE id = ?`
 	_, err := db.Exec(query, id.String())
@@ -170,7 +170,7 @@ func DeleteTodo(db *sql.DB, id uuid.UUID) error {
 	return nil
 }
 
-// Helper function to scan a todo from a single row
+// Helper function to scan a todo from a single row.
 func scanTodo(row *sql.Row) (*models.Todo, error) {
 	var todo models.Todo
 	var idStr, projectIDStr string
@@ -200,7 +200,7 @@ func scanTodo(row *sql.Row) (*models.Todo, error) {
 	return &todo, nil
 }
 
-// Helper function to scan a todo from multiple rows
+// Helper function to scan a todo from multiple rows.
 func scanTodoFromRows(rows *sql.Rows) (*models.Todo, error) {
 	var todo models.Todo
 	var idStr, projectIDStr string

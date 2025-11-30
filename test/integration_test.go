@@ -20,13 +20,13 @@ func TestFullWorkflow(t *testing.T) {
 
 	// Build toki binary
 	tokiBinary := filepath.Join(projectRoot, "toki")
-	buildCmd := exec.Command("go", "build", "-o", tokiBinary, "./cmd/toki")
+	buildCmd := exec.Command("go", "build", "-o", tokiBinary, "./cmd/toki") //nolint:gosec // Safe: building our own binary with fixed args
 	buildCmd.Dir = projectRoot
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build: %v\nOutput: %s", err, buildOutput)
 	}
-	defer os.Remove(tokiBinary)
+	defer func() { _ = os.Remove(tokiBinary) }()
 
 	// Use temp database
 	tmpDir := t.TempDir()
@@ -34,7 +34,7 @@ func TestFullWorkflow(t *testing.T) {
 
 	run := func(args ...string) (string, error) {
 		fullArgs := append([]string{"--db", dbPath}, args...)
-		cmd := exec.Command(tokiBinary, fullArgs...)
+		cmd := exec.Command(tokiBinary, fullArgs...) //nolint:gosec // Safe: executing our own test binary with controlled args
 		output, err := cmd.CombinedOutput()
 		return string(output), err
 	}

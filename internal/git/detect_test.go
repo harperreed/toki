@@ -27,7 +27,9 @@ func TestFindGitRoot(t *testing.T) {
 
 	// Create subdirectory
 	subDir := filepath.Join(repoDir, "nested", "deep")
-	os.MkdirAll(subDir, 0755)
+	if err := os.MkdirAll(subDir, 0750); err != nil {
+		t.Fatal(err)
+	}
 
 	// Test from subdirectory
 	root, err := FindGitRoot(subDir)

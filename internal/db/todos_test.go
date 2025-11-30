@@ -11,10 +11,12 @@ import (
 
 func TestCreateTodo(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo := models.NewTodo(project.ID, "test todo")
 	priority := "high"
@@ -40,13 +42,17 @@ func TestCreateTodo(t *testing.T) {
 
 func TestGetTodoByPrefix(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo := models.NewTodo(project.ID, "find me")
-	CreateTodo(db, todo)
+	if err := CreateTodo(db, todo); err != nil {
+		t.Fatal(err)
+	}
 
 	// Use first 6 characters as prefix
 	prefix := todo.ID.String()[:6]
@@ -63,15 +69,19 @@ func TestGetTodoByPrefix(t *testing.T) {
 
 func TestGetTodoByPrefixAmbiguous(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create two todos - we can't guarantee prefix collision
 	// but we can test the error path
 	todo1 := models.NewTodo(project.ID, "todo1")
-	CreateTodo(db, todo1)
+	if err := CreateTodo(db, todo1); err != nil {
+		t.Fatal(err)
+	}
 
 	// Test with empty prefix should be ambiguous
 	_, err := GetTodoByPrefix(db, "")
@@ -82,15 +92,21 @@ func TestGetTodoByPrefixAmbiguous(t *testing.T) {
 
 func TestListTodos(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo1 := models.NewTodo(project.ID, "todo1")
 	todo2 := models.NewTodo(project.ID, "todo2")
-	CreateTodo(db, todo1)
-	CreateTodo(db, todo2)
+	if err := CreateTodo(db, todo1); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateTodo(db, todo2); err != nil {
+		t.Fatal(err)
+	}
 
 	todos, err := ListTodos(db, &project.ID, nil, nil, nil)
 	if err != nil {
@@ -104,17 +120,23 @@ func TestListTodos(t *testing.T) {
 
 func TestListTodosFilterDone(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo1 := models.NewTodo(project.ID, "pending")
 	todo2 := models.NewTodo(project.ID, "done")
 	todo2.MarkDone()
 
-	CreateTodo(db, todo1)
-	CreateTodo(db, todo2)
+	if err := CreateTodo(db, todo1); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateTodo(db, todo2); err != nil {
+		t.Fatal(err)
+	}
 
 	doneFilter := false
 	todos, err := ListTodos(db, nil, &doneFilter, nil, nil)
@@ -132,19 +154,29 @@ func TestListTodosFilterDone(t *testing.T) {
 
 func TestListTodosFilterByTag(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo1 := models.NewTodo(project.ID, "backend todo")
 	todo2 := models.NewTodo(project.ID, "frontend todo")
-	CreateTodo(db, todo1)
-	CreateTodo(db, todo2)
+	if err := CreateTodo(db, todo1); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateTodo(db, todo2); err != nil {
+		t.Fatal(err)
+	}
 
 	// Tag only todo1 with "backend"
-	AddTagToTodo(db, todo1.ID, "backend")
-	AddTagToTodo(db, todo2.ID, "frontend")
+	if err := AddTagToTodo(db, todo1.ID, "backend"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddTagToTodo(db, todo2.ID, "frontend"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Filter by backend tag
 	tagFilter := "backend"
@@ -164,13 +196,17 @@ func TestListTodosFilterByTag(t *testing.T) {
 
 func TestUpdateTodo(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo := models.NewTodo(project.ID, "original")
-	CreateTodo(db, todo)
+	if err := CreateTodo(db, todo); err != nil {
+		t.Fatal(err)
+	}
 
 	todo.Description = "updated"
 	todo.MarkDone()
@@ -195,13 +231,17 @@ func TestUpdateTodo(t *testing.T) {
 
 func TestDeleteTodo(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo := models.NewTodo(project.ID, "to delete")
-	CreateTodo(db, todo)
+	if err := CreateTodo(db, todo); err != nil {
+		t.Fatal(err)
+	}
 
 	err := DeleteTodo(db, todo.ID)
 	if err != nil {

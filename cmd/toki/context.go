@@ -16,7 +16,7 @@ import (
 	"github.com/harper/toki/internal/models"
 )
 
-// detectProjectContext attempts to find project from current directory
+// detectProjectContext attempts to find project from current directory.
 func detectProjectContext() (*uuid.UUID, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -27,7 +27,7 @@ func detectProjectContext() (*uuid.UUID, error) {
 	gitRoot, err := git.FindGitRoot(cwd)
 	if err != nil {
 		// Not in a git repo
-		return nil, nil
+		return nil, nil //nolint:nilerr,nilnil // Intentional: not being in a git repo is not an error
 	}
 
 	// Look up project by path
@@ -54,10 +54,10 @@ func detectProjectContext() (*uuid.UUID, error) {
 		return &project.ID, nil
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil // Intentional: user declined project creation, not an error
 }
 
-// getProjectID gets project ID from flag or context
+// getProjectID gets project ID from flag or context.
 func getProjectID(projectFlag string) (*uuid.UUID, error) {
 	if projectFlag != "" {
 		project, err := db.GetProjectByName(dbConn, projectFlag)

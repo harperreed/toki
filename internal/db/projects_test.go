@@ -23,13 +23,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 func TestCreateProject(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	path := "/home/user/project"
 	project := models.NewProject("test-project", &path)
 
-	err := CreateProject(db, project)
-	if err != nil {
+	if err := CreateProject(db, project); err != nil {
 		t.Fatalf("Failed to create project: %v", err)
 	}
 
@@ -46,10 +45,12 @@ func TestCreateProject(t *testing.T) {
 
 func TestGetProjectByName(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("findme", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	found, err := GetProjectByName(db, "findme")
 	if err != nil {
@@ -63,11 +64,13 @@ func TestGetProjectByName(t *testing.T) {
 
 func TestGetProjectByPath(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	path := "/home/user/myproject"
 	project := models.NewProject("myproject", &path)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	found, err := GetProjectByPath(db, path)
 	if err != nil {
@@ -81,10 +84,14 @@ func TestGetProjectByPath(t *testing.T) {
 
 func TestListProjects(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
-	CreateProject(db, models.NewProject("project1", nil))
-	CreateProject(db, models.NewProject("project2", nil))
+	if err := CreateProject(db, models.NewProject("project1", nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := CreateProject(db, models.NewProject("project2", nil)); err != nil {
+		t.Fatal(err)
+	}
 
 	projects, err := ListProjects(db)
 	if err != nil {
@@ -98,10 +105,12 @@ func TestListProjects(t *testing.T) {
 
 func TestDeleteProject(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("todelete", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	err := DeleteProject(db, project.ID)
 	if err != nil {

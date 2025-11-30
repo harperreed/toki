@@ -11,7 +11,7 @@ import (
 
 func TestGetOrCreateTag(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	tag, err := GetOrCreateTag(db, "urgent")
 	if err != nil {
@@ -35,13 +35,17 @@ func TestGetOrCreateTag(t *testing.T) {
 
 func TestAddTagToTodo(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo := models.NewTodo(project.ID, "test")
-	CreateTodo(db, todo)
+	if err := CreateTodo(db, todo); err != nil {
+		t.Fatal(err)
+	}
 
 	err := AddTagToTodo(db, todo.ID, "backend")
 	if err != nil {
@@ -64,15 +68,21 @@ func TestAddTagToTodo(t *testing.T) {
 
 func TestRemoveTagFromTodo(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	project := models.NewProject("test", nil)
-	CreateProject(db, project)
+	if err := CreateProject(db, project); err != nil {
+		t.Fatal(err)
+	}
 
 	todo := models.NewTodo(project.ID, "test")
-	CreateTodo(db, todo)
+	if err := CreateTodo(db, todo); err != nil {
+		t.Fatal(err)
+	}
 
-	AddTagToTodo(db, todo.ID, "frontend")
+	if err := AddTagToTodo(db, todo.ID, "frontend"); err != nil {
+		t.Fatal(err)
+	}
 
 	err := RemoveTagFromTodo(db, todo.ID, "frontend")
 	if err != nil {
@@ -91,11 +101,17 @@ func TestRemoveTagFromTodo(t *testing.T) {
 
 func TestListAllTags(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
-	GetOrCreateTag(db, "tag1")
-	GetOrCreateTag(db, "tag2")
-	GetOrCreateTag(db, "tag3")
+	if _, err := GetOrCreateTag(db, "tag1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetOrCreateTag(db, "tag2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetOrCreateTag(db, "tag3"); err != nil {
+		t.Fatal(err)
+	}
 
 	tags, err := ListAllTags(db)
 	if err != nil {

@@ -5,13 +5,14 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/harper/toki/internal/models"
 )
 
-// GetOrCreateTag retrieves a tag by name or creates it if it doesn't exist
+// GetOrCreateTag retrieves a tag by name or creates it if it doesn't exist.
 func GetOrCreateTag(db *sql.DB, name string) (*models.Tag, error) {
 	// Try to get existing tag
 	var tag models.Tag
@@ -21,7 +22,7 @@ func GetOrCreateTag(db *sql.DB, name string) (*models.Tag, error) {
 		return &tag, nil
 	}
 
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to query tag: %w", err)
 	}
 
@@ -39,7 +40,7 @@ func GetOrCreateTag(db *sql.DB, name string) (*models.Tag, error) {
 	return &models.Tag{ID: id, Name: name}, nil
 }
 
-// AddTagToTodo associates a tag with a todo
+// AddTagToTodo associates a tag with a todo.
 func AddTagToTodo(db *sql.DB, todoID uuid.UUID, tagName string) error {
 	tag, err := GetOrCreateTag(db, tagName)
 	if err != nil {
@@ -55,7 +56,7 @@ func AddTagToTodo(db *sql.DB, todoID uuid.UUID, tagName string) error {
 	return nil
 }
 
-// RemoveTagFromTodo removes a tag association from a todo
+// RemoveTagFromTodo removes a tag association from a todo.
 func RemoveTagFromTodo(db *sql.DB, todoID uuid.UUID, tagName string) error {
 	query := `DELETE FROM todo_tags
 	          WHERE todo_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)`
@@ -68,7 +69,7 @@ func RemoveTagFromTodo(db *sql.DB, todoID uuid.UUID, tagName string) error {
 	return nil
 }
 
-// GetTodoTags retrieves all tags associated with a todo
+// GetTodoTags retrieves all tags associated with a todo.
 func GetTodoTags(db *sql.DB, todoID uuid.UUID) ([]*models.Tag, error) {
 	query := `SELECT t.id, t.name
 	          FROM tags t
@@ -80,7 +81,7 @@ func GetTodoTags(db *sql.DB, todoID uuid.UUID) ([]*models.Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get todo tags: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tags []*models.Tag
 	for rows.Next() {
@@ -94,7 +95,7 @@ func GetTodoTags(db *sql.DB, todoID uuid.UUID) ([]*models.Tag, error) {
 	return tags, nil
 }
 
-// ListAllTags retrieves all tags in the database
+// ListAllTags retrieves all tags in the database.
 func ListAllTags(db *sql.DB) ([]*models.Tag, error) {
 	query := `SELECT id, name FROM tags ORDER BY name`
 
@@ -102,7 +103,7 @@ func ListAllTags(db *sql.DB) ([]*models.Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tags: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tags []*models.Tag
 	for rows.Next() {

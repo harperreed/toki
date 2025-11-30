@@ -21,7 +21,7 @@ var (
 	priorityLow    = color.New(color.Faint)
 )
 
-// FormatTodo formats a single todo for display
+// FormatTodo formats a single todo for display.
 func FormatTodo(todo *models.Todo, tags []*models.Tag) string {
 	var builder strings.Builder
 
@@ -76,7 +76,7 @@ func FormatTodo(todo *models.Todo, tags []*models.Tag) string {
 	return builder.String()
 }
 
-// FormatProjectHeader formats a project header
+// FormatProjectHeader formats a project header.
 func FormatProjectHeader(project *models.Project) string {
 	header := fmt.Sprintf("PROJECT: %s", boldCyan.Sprint(project.Name))
 	if project.DirectoryPath != nil {
@@ -85,7 +85,7 @@ func FormatProjectHeader(project *models.Project) string {
 	return header
 }
 
-// FormatSeparator creates a separator line
+// FormatSeparator creates a separator line.
 func FormatSeparator() string {
 	return faint.Sprint("─────────────────────────────────────────────")
 }

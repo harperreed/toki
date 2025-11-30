@@ -81,7 +81,7 @@ var tagsListCmd = &cobra.Command{
 			return nil
 		}
 
-		color.New(color.Bold).Println("TAGS")
+		_, _ = color.New(color.Bold).Println("TAGS")
 		for _, tag := range tags {
 			fmt.Printf("  • %s\n", tag.Name)
 		}

@@ -68,7 +68,7 @@ var projectListCmd = &cobra.Command{
 			return nil
 		}
 
-		color.New(color.Bold).Println("PROJECTS")
+		_, _ = color.New(color.Bold).Println("PROJECTS")
 		fmt.Println(color.New(color.Faint).Sprint("────────────────────────────────────────"))
 
 		for _, p := range projects {

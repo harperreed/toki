@@ -10,7 +10,7 @@ import (
 )
 
 // FindGitRoot walks up the directory tree looking for .git
-// Returns the absolute path to the repository root
+// Returns the absolute path to the repository root.
 func FindGitRoot(startPath string) (string, error) {
 	absPath, err := filepath.Abs(startPath)
 	if err != nil {
@@ -24,7 +24,7 @@ func FindGitRoot(startPath string) (string, error) {
 			// Resolve symlinks
 			resolved, err := filepath.EvalSymlinks(currentPath)
 			if err != nil {
-				return currentPath, nil
+				return currentPath, nil //nolint:nilerr // Intentional: symlink resolution failure is not critical, return unresolved path
 			}
 			return resolved, nil
 		}
@@ -38,7 +38,7 @@ func FindGitRoot(startPath string) (string, error) {
 	}
 }
 
-// NormalizePath converts a path to absolute and resolves symlinks
+// NormalizePath converts a path to absolute and resolves symlinks.
 func NormalizePath(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -48,7 +48,7 @@ func NormalizePath(path string) (string, error) {
 	resolved, err := filepath.EvalSymlinks(absPath)
 	if err != nil {
 		// If symlink resolution fails, return absolute path
-		return absPath, nil
+		return absPath, nil //nolint:nilerr // Intentional: symlink resolution failure is not critical, return unresolved path
 	}
 
 	return resolved, nil
