@@ -77,5 +77,15 @@ func getProjectID(projectFlag string) (*uuid.UUID, error) {
 		return projectID, nil
 	}
 
-	return nil, fmt.Errorf("no project context detected. Use --project or run in a git repository")
+	// No project context - use or create "default" project
+	project, err := db.GetProjectByName(dbConn, "default")
+	if err != nil {
+		// Create default project if it doesn't exist
+		project = models.NewProject("default", nil)
+		if err := db.CreateProject(dbConn, project); err != nil {
+			return nil, fmt.Errorf("failed to create default project: %w", err)
+		}
+	}
+
+	return &project.ID, nil
 }
