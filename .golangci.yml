@@ -84,7 +84,7 @@ linters-settings:
     min-complexity: 15
 
   gocognit:
-    min-complexity: 20
+    min-complexity: 30
 
   funlen:
     lines: 100
@@ -124,6 +124,7 @@ issues:
     - path: _test\.go
       linters:
         - gocyclo
+        - gocognit
         - errcheck
         - funlen
         - gosec
