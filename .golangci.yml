@@ -12,7 +12,6 @@ output:
     - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
-  uniq-by-line: true
   sort-results: true
 
 linters:
