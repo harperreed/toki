@@ -19,7 +19,17 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "toki",
 	Short: "A super simple git-aware todo manager",
-	Long: `Toki is a CLI todo manager that organizes tasks by project,
+	Long: `
+████████╗ ██████╗ ██╗  ██╗██╗
+╚══██╔══╝██╔═══██╗██║ ██╔╝██║
+   ██║   ██║   ██║█████╔╝ ██║
+   ██║   ██║   ██║██╔═██╗ ██║
+   ██║   ╚██████╔╝██║  ██╗██║
+   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚═╝
+
+         ✨ Git-aware task management ⚡
+
+Toki is a CLI todo manager that organizes tasks by project,
 supports rich metadata (priority, tags, notes, due dates),
 and automatically detects project context from git repositories.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
