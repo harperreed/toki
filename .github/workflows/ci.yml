@@ -1,4 +1,4 @@
-# ABOUTME: GitHub Actions CI workflow for pagen
+# ABOUTME: GitHub Actions CI workflow for toki
 # ABOUTME: Runs tests, linting, and builds on multiple Go versions
 name: CI
 
@@ -89,11 +89,11 @@ jobs:
         run: make build
 
       - name: Verify binary
-        run: ./pagen --version
+        run: ./toki --help
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pagen-linux-amd64
-          path: pagen
+          name: toki-linux-amd64
+          path: toki
           retention-days: 7

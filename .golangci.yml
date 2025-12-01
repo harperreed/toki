@@ -1,8 +1,6 @@
 # ABOUTME: golangci-lint configuration for comprehensive Go code quality checks
 # ABOUTME: Enables linters for bugs, performance, security, style, and maintainability
 
-version: 2
-
 run:
   timeout: 5m
   tests: true
@@ -10,7 +8,8 @@ run:
   allow-parallel-runners: true
 
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
   uniq-by-line: true
