@@ -1,6 +1,8 @@
 # ABOUTME: golangci-lint configuration for comprehensive Go code quality checks
 # ABOUTME: Enables linters for bugs, performance, security, style, and maintainability
 
+version: 2
+
 run:
   timeout: 5m
   tests: true

@@ -8,6 +8,13 @@ import (
 	"os"
 )
 
+var (
+	// These variables are set via ldflags during build by GoReleaser.
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
