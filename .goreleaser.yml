@@ -1,6 +1,5 @@
 # GoReleaser configuration for toki
-# Note: Due to CGO requirements for SQLite, this config builds for the current platform only
-# Multi-platform releases require running goreleaser on each platform (handled by CI matrix)
+# Uses split/merge workflow for CGO cross-platform builds (macOS + Linux)
 version: 2
 
 before:
@@ -9,14 +8,11 @@ before:
     - go test ./...
 
 builds:
-  - id: toki
+  - id: toki-darwin
     binary: toki
     main: ./cmd/toki
     env:
       - CGO_ENABLED=1
-    # Build for macOS only due to CGO requirements for SQLite
-    # Cross-compilation to Linux with CGO is complex and requires Docker
-    # For Linux builds, users can build from source or we can add Docker-based builds later
     goos:
       - darwin
     goarch:
@@ -30,8 +26,35 @@ builds:
     tags:
       - sqlite_omit_load_extension
 
+  - id: toki-linux
+    binary: toki
+    main: ./cmd/toki
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    tags:
+      - sqlite_omit_load_extension
+    overrides:
+      - goos: linux
+        goarch: arm64
+        env:
+          - CGO_ENABLED=1
+          - CC=aarch64-linux-gnu-gcc
+
 archives:
   - id: toki
+    ids:
+      - toki-darwin
+      - toki-linux
     formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_
