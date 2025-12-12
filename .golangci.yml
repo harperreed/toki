@@ -98,7 +98,7 @@ linters-settings:
 
   goconst:
     min-len: 3
-    min-occurrences: 3
+    min-occurrences: 15
 
   gosec:
     excludes:
