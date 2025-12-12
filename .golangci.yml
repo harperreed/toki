@@ -51,7 +51,7 @@ linters:
     - errorlint         # Find code that will cause problems with Go 1.13+ error wrapping
 
     # Maintainability
-    - goconst           # Finds repeated strings that could be replaced by a constant
+    # - goconst           # Finds repeated strings that could be replaced by a constant (disabled - too noisy in tests)
     - gocritic          # Comprehensive static analyzer
     - unconvert         # Remove unnecessary type conversions
     - unparam           # Reports unused function parameters
