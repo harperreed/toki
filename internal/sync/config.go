@@ -98,8 +98,9 @@ func LoadConfig() (*Config, error) {
 
 func defaultConfig() *Config {
 	return &Config{
-		Server:  "https://api.storeusa.org",
-		VaultDB: filepath.Join(ConfigDir(), "vault.db"),
+		Server:   "https://api.storeusa.org",
+		VaultDB:  filepath.Join(ConfigDir(), "vault.db"),
+		AutoSync: true,
 	}
 }
 
@@ -119,8 +120,8 @@ func applyEnvOverrides(cfg *Config) {
 	if deviceID := os.Getenv("TOKI_DEVICE_ID"); deviceID != "" {
 		cfg.DeviceID = deviceID
 	}
-	if autoSync := os.Getenv("TOKI_AUTO_SYNC"); autoSync == "1" || autoSync == "true" {
-		cfg.AutoSync = true
+	if autoSync := os.Getenv("TOKI_AUTO_SYNC"); autoSync != "" {
+		cfg.AutoSync = autoSync == "1" || autoSync == "true"
 	}
 }
 

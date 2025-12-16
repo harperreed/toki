@@ -163,7 +163,7 @@ func TestApplyEnvOverrides_AutoSyncVariants(t *testing.T) {
 		{"1", "1", true},
 		{"false", "false", false},
 		{"0", "0", false},
-		{"empty", "", false},
+		{"empty", "", true}, // default is now true
 	}
 
 	for _, tt := range tests {
@@ -333,4 +333,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	// VaultDB should be set to default location
 	assert.Contains(t, cfg.VaultDB, "vault.db")
+
+	// AutoSync should be enabled by default
+	assert.True(t, cfg.AutoSync)
 }
