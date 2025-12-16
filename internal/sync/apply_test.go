@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"suitesync/vault"
+	"github.com/harperreed/sweet/vault"
 
 	"github.com/google/uuid"
 	"github.com/harper/toki/internal/db"

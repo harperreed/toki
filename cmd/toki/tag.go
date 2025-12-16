@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"suitesync/vault"
+	"github.com/harperreed/sweet/vault"
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"

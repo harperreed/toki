@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"suitesync/vault"
+	"github.com/harperreed/sweet/vault"
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"

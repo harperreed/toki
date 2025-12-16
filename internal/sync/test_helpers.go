@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"suitesync/vault"
+	"github.com/harperreed/sweet/vault"
 
 	"github.com/harper/toki/internal/db"
 	"github.com/stretchr/testify/require"
