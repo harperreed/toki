@@ -40,4 +40,4 @@ require (
 	suitesync v0.0.0
 )
 
-replace suitesync => /Users/harper/workspace/2389/suite-sync
+replace suitesync => github.com/harperreed/sweet v0.3.0
