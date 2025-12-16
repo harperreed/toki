@@ -4,13 +4,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
+	"suitesync/vault"
+
 	"github.com/fatih/color"
+	"github.com/google/uuid"
 	"github.com/harper/toki/internal/db"
 	"github.com/harper/toki/internal/models"
+	"github.com/harper/toki/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -60,6 +65,17 @@ var addCmd = &cobra.Command{
 			return fmt.Errorf("failed to create todo: %w", err)
 		}
 
+		// Get project name for sync
+		project, err := db.GetProjectByID(dbConn, *projectID)
+		if err != nil {
+			return fmt.Errorf("failed to get project: %w", err)
+		}
+
+		// Queue sync after successful creation
+		if err := queueTodoSyncAdd(cmd.Context(), todo, project.Name); err != nil {
+			color.Yellow("⚠ Sync: %v", err)
+		}
+
 		// Handle tags
 		if tagsStr, _ := cmd.Flags().GetString("tags"); tagsStr != "" {
 			tags := strings.Split(tagsStr, ",")
@@ -68,6 +84,10 @@ var addCmd = &cobra.Command{
 				if tag != "" {
 					if err := db.AddTagToTodo(dbConn, todo.ID, tag); err != nil {
 						return fmt.Errorf("failed to add tag: %w", err)
+					}
+					// Queue sync for each tag
+					if err := queueTodoTagSyncAdd(cmd.Context(), todo.ID, tag); err != nil {
+						color.Yellow("⚠ Sync: %v", err)
 					}
 				}
 			}
@@ -78,6 +98,32 @@ var addCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func queueTodoSyncAdd(ctx context.Context, todo *models.Todo, projectName string) error {
+	cfg, err := sync.LoadConfig()
+	if err != nil || !cfg.IsConfigured() {
+		return nil // Sync not configured, skip silently
+	}
+	syncer, err := sync.NewSyncer(cfg, dbConn)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = syncer.Close() }()
+	return syncer.QueueTodoChange(ctx, todo, projectName, vault.OpUpsert)
+}
+
+func queueTodoTagSyncAdd(ctx context.Context, todoID uuid.UUID, tagName string) error {
+	cfg, err := sync.LoadConfig()
+	if err != nil || !cfg.IsConfigured() {
+		return nil // Sync not configured, skip silently
+	}
+	syncer, err := sync.NewSyncer(cfg, dbConn)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = syncer.Close() }()
+	return syncer.QueueTodoTagChange(ctx, todoID, tagName, vault.OpUpsert)
 }
 
 func init() {

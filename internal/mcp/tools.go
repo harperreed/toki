@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"time"
 
+	"suitesync/vault"
+
 	"github.com/google/uuid"
 	"github.com/harper/toki/internal/db"
 	"github.com/harper/toki/internal/models"
+	"github.com/harper/toki/internal/sync"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -81,6 +84,8 @@ func (s *Server) registerTools() {
 	s.registerAddProjectTool()
 	s.registerListProjectsTool()
 	s.registerDeleteProjectTool()
+	s.registerSyncStatusTool()
+	s.registerSyncNowTool()
 }
 
 func (s *Server) registerAddTodoTool() {
@@ -935,6 +940,161 @@ func (s *Server) handleDeleteProject(_ context.Context, req *mcp.CallToolRequest
 		ProjectID: input.ProjectID,
 	}
 
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
+}
+
+// SyncStatusInput defines the input parameters for the sync_status tool.
+type SyncStatusInput struct{}
+
+// SyncStatusOutput defines the output structure for the sync_status tool.
+type SyncStatusOutput struct {
+	Configured   bool   `json:"configured"`
+	Server       string `json:"server"`
+	PendingCount int    `json:"pending_count"`
+	AutoSync     bool   `json:"auto_sync"`
+	LastSync     string `json:"last_sync"`
+}
+
+func (s *Server) registerSyncStatusTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "sync_status",
+		Description: `Get sync status including pending changes and configuration. Returns information about vault sync configuration, number of pending changes waiting to be synced, auto-sync setting, and last sync timestamp. Use this to check if sync is configured and see how many changes are queued.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+		},
+	}, s.handleSyncStatus)
+}
+
+func (s *Server) handleSyncStatus(ctx context.Context, req *mcp.CallToolRequest, input SyncStatusInput) (*mcp.CallToolResult, SyncStatusOutput, error) {
+	cfg, err := sync.LoadConfig()
+	if err != nil {
+		return nil, SyncStatusOutput{}, fmt.Errorf("failed to load sync config: %w", err)
+	}
+
+	output := SyncStatusOutput{
+		Configured: cfg.IsConfigured(),
+		Server:     cfg.Server,
+		AutoSync:   cfg.AutoSync,
+		LastSync:   "never",
+	}
+
+	// If configured, get pending count and last sync
+	if cfg.IsConfigured() {
+		syncer, err := sync.NewSyncer(cfg, s.db)
+		if err != nil {
+			return nil, SyncStatusOutput{}, fmt.Errorf("failed to create syncer: %w", err)
+		}
+		defer func() { _ = syncer.Close() }()
+
+		pendingCount, err := syncer.PendingCount(ctx)
+		if err != nil {
+			return nil, SyncStatusOutput{}, fmt.Errorf("failed to get pending count: %w", err)
+		}
+		output.PendingCount = pendingCount
+
+		lastSeq, err := syncer.LastSyncedSeq(ctx)
+		if err == nil && lastSeq != "0" {
+			output.LastSync = lastSeq
+		}
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
+	}, output, nil
+}
+
+// SyncNowInput defines the input parameters for the sync_now tool.
+type SyncNowInput struct{}
+
+// SyncNowOutput defines the output structure for the sync_now tool.
+type SyncNowOutput struct {
+	Success bool   `json:"success"`
+	Pushed  int    `json:"pushed"`
+	Pulled  int    `json:"pulled"`
+	Error   string `json:"error,omitempty"`
+}
+
+func (s *Server) registerSyncNowTool() {
+	mcp.AddTool(s.mcp, &mcp.Tool{
+		Name:        "sync_now",
+		Description: `Trigger vault sync immediately. Pushes pending local changes to the vault server and pulls remote changes. Returns counts of pushed and pulled changes. Use this to manually sync when auto-sync is disabled or to force an immediate sync. Requires sync to be configured via 'toki sync login'.`,
+		InputSchema: map[string]interface{}{
+			"type": "object",
+		},
+	}, s.handleSyncNow)
+}
+
+func (s *Server) handleSyncNow(ctx context.Context, req *mcp.CallToolRequest, input SyncNowInput) (*mcp.CallToolResult, SyncNowOutput, error) {
+	cfg, err := sync.LoadConfig()
+	if err != nil {
+		output := SyncNowOutput{
+			Success: false,
+			Error:   fmt.Sprintf("failed to load sync config: %v", err),
+		}
+		return buildSyncNowResult(output)
+	}
+
+	if !cfg.IsConfigured() {
+		output := SyncNowOutput{
+			Success: false,
+			Error:   "sync not configured - run 'toki sync login' first",
+		}
+		return buildSyncNowResult(output)
+	}
+
+	syncer, err := sync.NewSyncer(cfg, s.db)
+	if err != nil {
+		output := SyncNowOutput{
+			Success: false,
+			Error:   fmt.Sprintf("failed to create syncer: %v", err),
+		}
+		return buildSyncNowResult(output)
+	}
+	defer func() { _ = syncer.Close() }()
+
+	// Track pushed/pulled counts
+	var pushed, pulled int
+	events := &vault.SyncEvents{
+		OnPush: func(pushedCount, remaining int) {
+			pushed += pushedCount
+		},
+		OnPull: func(pulledCount int) {
+			pulled += pulledCount
+		},
+	}
+
+	err = syncer.SyncWithEvents(ctx, events)
+	if err != nil {
+		output := SyncNowOutput{
+			Success: false,
+			Pushed:  pushed,
+			Pulled:  pulled,
+			Error:   fmt.Sprintf("sync failed: %v", err),
+		}
+		return buildSyncNowResult(output)
+	}
+
+	output := SyncNowOutput{
+		Success: true,
+		Pushed:  pushed,
+		Pulled:  pulled,
+	}
+	return buildSyncNowResult(output)
+}
+
+func buildSyncNowResult(output SyncNowOutput) (*mcp.CallToolResult, SyncNowOutput, error) {
 	jsonBytes, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		return nil, output, fmt.Errorf("failed to marshal output: %w", err)

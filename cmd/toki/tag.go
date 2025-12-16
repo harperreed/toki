@@ -4,11 +4,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"suitesync/vault"
+
 	"github.com/fatih/color"
+	"github.com/google/uuid"
 	"github.com/harper/toki/internal/db"
+	"github.com/harper/toki/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +40,11 @@ var tagAddCmd = &cobra.Command{
 			return fmt.Errorf("failed to add tag: %w", err)
 		}
 
+		// Queue sync after successful tag addition
+		if err := queueTodoTagSyncTag(cmd.Context(), todo.ID, tagName, vault.OpUpsert); err != nil {
+			color.Yellow("⚠ Sync: %v", err)
+		}
+
 		color.Green("✓ Added tag '%s'", tagName)
 		fmt.Printf("  %s\n", todo.Description)
 
@@ -54,6 +64,11 @@ var tagRemoveCmd = &cobra.Command{
 		todo, err := db.GetTodoByPrefix(dbConn, prefix)
 		if err != nil {
 			return err
+		}
+
+		// Queue sync BEFORE delete to preserve data
+		if err := queueTodoTagSyncTag(cmd.Context(), todo.ID, tagName, vault.OpDelete); err != nil {
+			color.Yellow("⚠ Sync: %v", err)
 		}
 
 		if err := db.RemoveTagFromTodo(dbConn, todo.ID, tagName); err != nil {
@@ -88,6 +103,19 @@ var tagsListCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func queueTodoTagSyncTag(ctx context.Context, todoID uuid.UUID, tagName string, op vault.Op) error {
+	cfg, err := sync.LoadConfig()
+	if err != nil || !cfg.IsConfigured() {
+		return nil // Sync not configured, skip silently
+	}
+	syncer, err := sync.NewSyncer(cfg, dbConn)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = syncer.Close() }()
+	return syncer.QueueTodoTagChange(ctx, todoID, tagName, op)
 }
 
 func init() {

@@ -72,6 +72,215 @@ func TestFullWorkflow(t *testing.T) {
 	t.Logf("Integration test passed!\n%s", output)
 }
 
+func TestSyncInit(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Run sync init
+	output, err := run("sync", "init")
+	if err != nil {
+		t.Fatalf("Failed to init sync: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "Sync initialized") {
+		t.Error("Expected success message")
+	}
+
+	if !strings.Contains(output, "Device:") {
+		t.Error("Expected device ID in output")
+	}
+
+	// Verify config file was created
+	configPath := filepath.Join(configDir, ".config", "toki", "sync.json")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Error("Config file was not created")
+	}
+
+	// Verify init fails if run again
+	output, err = run("sync", "init")
+	if err == nil {
+		t.Error("Expected error when running init twice")
+	}
+
+	if !strings.Contains(output, "config already exists") {
+		t.Error("Expected 'config already exists' error message")
+	}
+}
+
+func TestSyncStatus_NotConfigured(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Run sync status without init
+	output, err := run("sync", "status")
+	if err != nil {
+		t.Fatalf("Failed to get sync status: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "Config:") {
+		t.Error("Expected config path in output")
+	}
+
+	if !strings.Contains(output, "(not set)") {
+		t.Error("Expected '(not set)' for unconfigured values")
+	}
+}
+
+func TestSyncStatus_AfterInit(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Init sync first
+	_, err := run("sync", "init")
+	if err != nil {
+		t.Fatalf("Failed to init sync: %v", err)
+	}
+
+	// Run sync status
+	output, err := run("sync", "status")
+	if err != nil {
+		t.Fatalf("Failed to get sync status: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "Device ID:") {
+		t.Error("Expected device ID in status")
+	}
+
+	if !strings.Contains(output, "https://api.storeusa.org") {
+		t.Error("Expected default server URL in status")
+	}
+
+	if !strings.Contains(output, "Not logged in") {
+		t.Error("Expected 'Not logged in' status")
+	}
+}
+
+func TestSyncPending_NotConfigured(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Run sync pending without init
+	output, err := run("sync", "pending")
+	if err != nil {
+		t.Fatalf("Failed to get pending changes: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "not configured") {
+		t.Error("Expected 'not configured' message")
+	}
+}
+
+func TestSyncPending_AfterInit(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Init sync first
+	_, err := run("sync", "init")
+	if err != nil {
+		t.Fatalf("Failed to init sync: %v", err)
+	}
+
+	// Run sync pending (should show not configured since we haven't logged in)
+	output, err := run("sync", "pending")
+	if err != nil {
+		t.Fatalf("Failed to get pending changes: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "not configured") {
+		t.Error("Expected 'not configured' message when not logged in")
+	}
+}
+
+func TestSyncLogout_WhenNotLoggedIn(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Init sync first
+	_, err := run("sync", "init")
+	if err != nil {
+		t.Fatalf("Failed to init sync: %v", err)
+	}
+
+	// Run logout when not logged in
+	output, err := run("sync", "logout")
+	if err != nil {
+		t.Fatalf("Failed to logout: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "Not logged in") {
+		t.Error("Expected 'Not logged in' message")
+	}
+}
+
+func TestOfflineQueueing(t *testing.T) {
+	run := setupTestBinary(t)
+
+	// Use temp config directory
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+
+	// Create a project
+	_, err := run("project", "add", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	// Add a todo (this should work offline)
+	output, err := run("add", "offline todo", "--project", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to add todo: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "offline todo") {
+		t.Error("Expected todo to be created")
+	}
+
+	// Verify todo is in the list
+	output, err = run("list", "--project", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to list todos: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "offline todo") {
+		t.Error("Todo should be in the list")
+	}
+
+	// Mark it done (this should also work offline)
+	todoPrefix := extractTodoPrefix(output)
+	_, err = run("done", todoPrefix)
+	if err != nil {
+		t.Fatalf("Failed to mark done: %v", err)
+	}
+
+	// Verify it's marked as done
+	output, err = run("list", "--project", "test-project", "--done")
+	if err != nil {
+		t.Fatalf("Failed to list done todos: %v\n%s", err, output)
+	}
+
+	if !strings.Contains(output, "✓") {
+		t.Error("Todo should be marked as done")
+	}
+}
+
 func setupTestBinary(t *testing.T) func(args ...string) (string, error) {
 	t.Helper()
 	projectRoot, err := filepath.Abs("..")

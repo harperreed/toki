@@ -4,12 +4,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
+
+	"suitesync/vault"
 
 	"github.com/fatih/color"
 	"github.com/harper/toki/internal/db"
 	"github.com/harper/toki/internal/git"
 	"github.com/harper/toki/internal/models"
+	"github.com/harper/toki/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -42,6 +46,11 @@ var projectAddCmd = &cobra.Command{
 
 		if err := db.CreateProject(dbConn, project); err != nil {
 			return fmt.Errorf("failed to create project: %w", err)
+		}
+
+		// Queue sync after successful creation
+		if err := queueProjectSyncAdd(cmd.Context(), project); err != nil {
+			color.Yellow("⚠ Sync: %v", err)
 		}
 
 		color.Green("✓ Created project '%s'", name)
@@ -105,6 +114,17 @@ var projectSetPathCmd = &cobra.Command{
 			return fmt.Errorf("failed to update path: %w", err)
 		}
 
+		// After db.UpdateProjectPath succeeds, fetch updated project and queue sync
+		updatedProject, err := db.GetProjectByID(dbConn, project.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get project: %w", err)
+		}
+
+		// Queue sync after successful update
+		if err := queueProjectSyncAdd(cmd.Context(), updatedProject); err != nil {
+			color.Yellow("⚠ Sync: %v", err)
+		}
+
 		color.Green("✓ Updated path for '%s'", name)
 		fmt.Printf("  Path: %s\n", normalized)
 
@@ -125,6 +145,11 @@ var projectRemoveCmd = &cobra.Command{
 			return fmt.Errorf("project not found: %w", err)
 		}
 
+		// Queue sync BEFORE delete to preserve data
+		if err := queueProjectSyncRemove(cmd.Context(), project); err != nil {
+			color.Yellow("⚠ Sync: %v", err)
+		}
+
 		if err := db.DeleteProject(dbConn, project.ID); err != nil {
 			return fmt.Errorf("failed to delete project: %w", err)
 		}
@@ -133,6 +158,32 @@ var projectRemoveCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func queueProjectSyncAdd(ctx context.Context, project *models.Project) error {
+	cfg, err := sync.LoadConfig()
+	if err != nil || !cfg.IsConfigured() {
+		return nil // Sync not configured, skip silently
+	}
+	syncer, err := sync.NewSyncer(cfg, dbConn)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = syncer.Close() }()
+	return syncer.QueueProjectChange(ctx, project, vault.OpUpsert)
+}
+
+func queueProjectSyncRemove(ctx context.Context, project *models.Project) error {
+	cfg, err := sync.LoadConfig()
+	if err != nil || !cfg.IsConfigured() {
+		return nil // Sync not configured, skip silently
+	}
+	syncer, err := sync.NewSyncer(cfg, dbConn)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = syncer.Close() }()
+	return syncer.QueueProjectChange(ctx, project, vault.OpDelete)
 }
 
 func init() {
