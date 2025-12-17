@@ -67,12 +67,12 @@ var syncInitCmd = &cobra.Command{
 }
 
 var syncLoginCmd = &cobra.Command{
-	Use:   "login [email]",
+	Use:   "login",
 	Short: "Login to sync server",
-	Long: `Authenticate with the sync server using email, password, and recovery phrase.
+	Long: `Login to sync service with your credentials and recovery phrase.
 
-The recovery phrase is your BIP39 mnemonic that was given to you when you
-registered. Only the derived key is stored locally, not the mnemonic.`,
+Your recovery phrase is used to derive encryption keys - the server
+never sees your data in plaintext.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		server, _ := cmd.Flags().GetString("server")
 
@@ -92,14 +92,9 @@ registered. Only the derived key is stored locally, not the mnemonic.`,
 		reader := bufio.NewReader(os.Stdin)
 
 		// Get email
-		var email string
-		if len(args) > 0 {
-			email = args[0]
-		} else {
-			fmt.Print("Email: ")
-			emailInput, _ := reader.ReadString('\n')
-			email = strings.TrimSpace(emailInput)
-		}
+		fmt.Print("Email: ")
+		email, _ := reader.ReadString('\n')
+		email = strings.TrimSpace(email)
 		if email == "" {
 			return fmt.Errorf("email required")
 		}
@@ -112,16 +107,26 @@ registered. Only the derived key is stored locally, not the mnemonic.`,
 			return fmt.Errorf("read password: %w", err)
 		}
 		password := string(passwordBytes)
+		if password == "" {
+			return fmt.Errorf("password cannot be empty")
+		}
 
 		// Get mnemonic
-		fmt.Print("\nEnter your recovery phrase:\n> ")
+		fmt.Print("Recovery phrase (12 or 24 words): ")
 		mnemonic, _ := reader.ReadString('\n')
 		mnemonic = strings.TrimSpace(mnemonic)
 
 		// Validate mnemonic
-		if _, err := vault.ParseMnemonic(mnemonic); err != nil {
-			return fmt.Errorf("invalid recovery phrase: %w", err)
+		parsed, err := vault.ParseMnemonic(mnemonic)
+		if err != nil {
+			return fmt.Errorf("invalid recovery phrase: must be 12 or 24 words")
 		}
+		// Verify it's actually 12 or 24 words
+		wordCount := len(strings.Fields(mnemonic))
+		if wordCount != 12 && wordCount != 24 {
+			return fmt.Errorf("invalid recovery phrase: must be 12 or 24 words")
+		}
+		_ = parsed
 
 		// Ensure we have a device ID before login (v0.3.0 requires device registration)
 		if cfg.DeviceID == "" {
@@ -158,8 +163,11 @@ registered. Only the derived key is stored locally, not the mnemonic.`,
 			return fmt.Errorf("save config: %w", err)
 		}
 
-		color.Green("\n✓ Logged in to toki sync")
-		fmt.Printf("Token expires: %s\n", result.Token.Expires.Format(time.RFC3339))
+		color.Green("\n✓ Logged in successfully")
+		fmt.Printf("  User ID: %s\n", cfg.UserID)
+		fmt.Printf("  Device: %s\n", cfg.DeviceID[:8]+"...")
+		fmt.Printf("  Token expires: %s\n", result.Token.Expires.Format(time.RFC3339))
+		fmt.Printf("\nRun 'toki sync now' to sync your data.\n")
 
 		return nil
 	},

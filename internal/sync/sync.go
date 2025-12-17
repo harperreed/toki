@@ -6,7 +6,6 @@ package sync
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,11 +29,12 @@ const (
 
 // Syncer manages vault sync for toki data.
 type Syncer struct {
-	config *Config
-	store  *vault.Store
-	keys   vault.Keys
-	client *vault.Client
-	appDB  *sql.DB
+	config      *Config
+	store       *vault.Store
+	keys        vault.Keys
+	client      *vault.Client
+	vaultSyncer *vault.Syncer
+	appDB       *sql.DB
 }
 
 // NewSyncer creates a new syncer from config.
@@ -63,19 +63,35 @@ func NewSyncer(cfg *Config, appDB *sql.DB) (*Syncer, error) {
 		return nil, fmt.Errorf("open vault store: %w", err)
 	}
 
+	var tokenExpires time.Time
+	if cfg.TokenExpires != "" {
+		tokenExpires, _ = time.Parse(time.RFC3339, cfg.TokenExpires)
+	}
+
 	client := vault.NewClient(vault.SyncConfig{
-		AppID:     AppID,
-		BaseURL:   cfg.Server,
-		DeviceID:  cfg.DeviceID,
-		AuthToken: cfg.Token,
+		AppID:        AppID,
+		BaseURL:      cfg.Server,
+		DeviceID:     cfg.DeviceID,
+		AuthToken:    cfg.Token,
+		RefreshToken: cfg.RefreshToken,
+		TokenExpires: tokenExpires,
+		OnTokenRefresh: func(token, refreshToken string, expires time.Time) {
+			cfg.Token = token
+			cfg.RefreshToken = refreshToken
+			cfg.TokenExpires = expires.Format(time.RFC3339)
+			if err := SaveConfig(cfg); err != nil {
+				fmt.Printf("warning: failed to save refreshed token: %v\n", err)
+			}
+		},
 	})
 
 	return &Syncer{
-		config: cfg,
-		store:  store,
-		keys:   keys,
-		client: client,
-		appDB:  appDB,
+		config:      cfg,
+		store:       store,
+		keys:        keys,
+		client:      client,
+		vaultSyncer: vault.NewSyncer(store, client, keys, cfg.UserID),
+		appDB:       appDB,
 	}, nil
 }
 
@@ -160,27 +176,12 @@ func (s *Syncer) QueueTodoTagChange(ctx context.Context, todoID uuid.UUID, tagNa
 }
 
 func (s *Syncer) queueChange(ctx context.Context, entity, entityID string, op vault.Op, payload map[string]any) error {
-	change, err := vault.NewChange(entity, entityID, op, payload)
-	if err != nil {
-		return fmt.Errorf("create change: %w", err)
-	}
-	if op == vault.OpDelete {
-		change.Deleted = true
+	if s.vaultSyncer == nil {
+		return errors.New("vault sync not configured")
 	}
 
-	plain, err := json.Marshal(change)
-	if err != nil {
-		return fmt.Errorf("marshal change: %w", err)
-	}
-
-	aad := change.AAD(s.config.UserID, s.config.DeviceID)
-	env, err := vault.Encrypt(s.keys.EncKey, plain, aad)
-	if err != nil {
-		return fmt.Errorf("encrypt change: %w", err)
-	}
-
-	if err := s.store.EnqueueEncryptedChange(ctx, change, s.config.UserID, s.config.DeviceID, env); err != nil {
-		return fmt.Errorf("enqueue change: %w", err)
+	if _, err := s.vaultSyncer.QueueChange(ctx, entity, entityID, op, payload); err != nil {
+		return fmt.Errorf("queue change: %w", err)
 	}
 
 	// Auto-sync if enabled
