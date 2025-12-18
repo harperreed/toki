@@ -24,11 +24,13 @@ type Config struct {
 	DerivedKey   string `json:"derived_key"`
 	DeviceID     string `json:"device_id"`
 	VaultDB      string `json:"vault_db"`
-	AutoSync     bool   `json:"auto_sync"`
 }
 
 // ConfigPath returns the path to the sync config file.
 func ConfigPath() string {
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "toki", "sync.json")
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(os.TempDir(), ".toki", "sync.json")
@@ -98,9 +100,8 @@ func LoadConfig() (*Config, error) {
 
 func defaultConfig() *Config {
 	return &Config{
-		Server:   "https://api.storeusa.org",
-		VaultDB:  filepath.Join(ConfigDir(), "vault.db"),
-		AutoSync: true,
+		Server:  "https://api.storeusa.org",
+		VaultDB: filepath.Join(ConfigDir(), "vault.db"),
 	}
 }
 
@@ -119,9 +120,6 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if deviceID := os.Getenv("TOKI_DEVICE_ID"); deviceID != "" {
 		cfg.DeviceID = deviceID
-	}
-	if autoSync := os.Getenv("TOKI_AUTO_SYNC"); autoSync != "" {
-		cfg.AutoSync = autoSync == "1" || autoSync == "true"
 	}
 }
 

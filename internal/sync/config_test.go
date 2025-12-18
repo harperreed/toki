@@ -19,6 +19,15 @@ func TestConfigPath(t *testing.T) {
 	assert.Contains(t, path, "toki")
 }
 
+func TestConfigPath_RespectsXDGConfigHome(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	path := ConfigPath()
+	expected := filepath.Join(tmpDir, "toki", "sync.json")
+	assert.Equal(t, expected, path)
+}
+
 func TestConfigDir(t *testing.T) {
 	dir := ConfigDir()
 	assert.Contains(t, dir, "toki")
@@ -47,6 +56,7 @@ func TestLoadConfig_NoFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Set environment to use temp directory
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg, err := LoadConfig()
@@ -59,7 +69,7 @@ func TestLoadConfig_NoFile(t *testing.T) {
 
 func TestLoadConfig_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".config", "toki")
+	configDir := filepath.Join(tmpDir, "toki")
 	configPath := filepath.Join(configDir, "sync.json")
 
 	err := os.MkdirAll(configDir, 0o750)
@@ -72,7 +82,6 @@ func TestLoadConfig_ValidFile(t *testing.T) {
 		DerivedKey: "key123",
 		DeviceID:   "device123",
 		VaultDB:    filepath.Join(configDir, "vault.db"),
-		AutoSync:   true,
 	}
 
 	data, err := json.MarshalIndent(testCfg, "", "  ")
@@ -81,6 +90,7 @@ func TestLoadConfig_ValidFile(t *testing.T) {
 	err = os.WriteFile(configPath, data, 0o600)
 	require.NoError(t, err)
 
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg, err := LoadConfig()
@@ -92,12 +102,11 @@ func TestLoadConfig_ValidFile(t *testing.T) {
 	assert.Equal(t, testCfg.Token, cfg.Token)
 	assert.Equal(t, testCfg.DerivedKey, cfg.DerivedKey)
 	assert.Equal(t, testCfg.DeviceID, cfg.DeviceID)
-	assert.Equal(t, testCfg.AutoSync, cfg.AutoSync)
 }
 
 func TestLoadConfig_CorruptedFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".config", "toki")
+	configDir := filepath.Join(tmpDir, "toki")
 	configPath := filepath.Join(configDir, "sync.json")
 
 	err := os.MkdirAll(configDir, 0o750)
@@ -107,6 +116,7 @@ func TestLoadConfig_CorruptedFile(t *testing.T) {
 	err = os.WriteFile(configPath, []byte("{invalid json}"), 0o600)
 	require.NoError(t, err)
 
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg, err := LoadConfig()
@@ -122,13 +132,14 @@ func TestLoadConfig_CorruptedFile(t *testing.T) {
 
 func TestLoadConfig_DirectoryInsteadOfFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, ".config", "toki")
+	configDir := filepath.Join(tmpDir, "toki")
 	configPath := filepath.Join(configDir, "sync.json")
 
 	// Create directory where file should be
 	err := os.MkdirAll(configPath, 0o750)
 	require.NoError(t, err)
 
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg, err := LoadConfig()
@@ -140,52 +151,23 @@ func TestLoadConfig_DirectoryInsteadOfFile(t *testing.T) {
 func TestApplyEnvOverrides(t *testing.T) {
 	tmpDir := t.TempDir()
 
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 	t.Setenv("TOKI_SERVER", "https://env.example.com")
 	t.Setenv("TOKI_TOKEN", "env-token")
-	t.Setenv("TOKI_AUTO_SYNC", "true")
 
 	cfg, err := LoadConfig()
 	require.NoError(t, err)
 
 	assert.Equal(t, "https://env.example.com", cfg.Server)
 	assert.Equal(t, "env-token", cfg.Token)
-	assert.True(t, cfg.AutoSync)
-}
-
-func TestApplyEnvOverrides_AutoSyncVariants(t *testing.T) {
-	tests := []struct {
-		name     string
-		envValue string
-		expected bool
-	}{
-		{"true", "true", true},
-		{"1", "1", true},
-		{"false", "false", false},
-		{"0", "0", false},
-		{"empty", "", true}, // default is now true
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			t.Setenv("HOME", tmpDir)
-
-			if tt.envValue != "" {
-				t.Setenv("TOKI_AUTO_SYNC", tt.envValue)
-			}
-
-			cfg, err := LoadConfig()
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, cfg.AutoSync)
-		})
-	}
 }
 
 func TestSaveConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, ".config", "toki", "sync.json")
+	configPath := filepath.Join(tmpDir, "toki", "sync.json")
 
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg := &Config{
@@ -194,7 +176,6 @@ func TestSaveConfig(t *testing.T) {
 		Token:      "token123",
 		DerivedKey: "key123",
 		DeviceID:   "device123",
-		AutoSync:   true,
 	}
 
 	err := SaveConfig(cfg)
@@ -218,11 +199,11 @@ func TestSaveConfig(t *testing.T) {
 	assert.Equal(t, cfg.Token, loaded.Token)
 	assert.Equal(t, cfg.DerivedKey, loaded.DerivedKey)
 	assert.Equal(t, cfg.DeviceID, loaded.DeviceID)
-	assert.Equal(t, cfg.AutoSync, loaded.AutoSync)
 }
 
 func TestInitConfig(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg, err := InitConfig()
@@ -241,6 +222,7 @@ func TestInitConfig(t *testing.T) {
 
 func TestConfigExists(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	// Should not exist initially
@@ -322,6 +304,7 @@ func TestIsConfigured(t *testing.T) { //nolint:funlen // test table is necessari
 
 func TestDefaultConfig(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("HOME", tmpDir)
 
 	cfg, err := LoadConfig()
@@ -333,7 +316,4 @@ func TestDefaultConfig(t *testing.T) {
 
 	// VaultDB should be set to default location
 	assert.Contains(t, cfg.VaultDB, "vault.db")
-
-	// AutoSync should be enabled by default
-	assert.True(t, cfg.AutoSync)
 }

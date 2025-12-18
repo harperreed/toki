@@ -34,7 +34,6 @@ func TestNewSyncer(t *testing.T) {
 		DerivedKey: phrase,
 		DeviceID:   "test-device",
 		VaultDB:    filepath.Join(tmpDir, "vault.db"),
-		AutoSync:   false,
 	}
 
 	syncer, err := NewSyncer(cfg, appDB)
@@ -205,24 +204,6 @@ func TestMultipleChanges(t *testing.T) {
 	count, err := syncer.PendingCount(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 5, count)
-}
-
-func TestAutoSyncDisabled(t *testing.T) {
-	ctx := context.Background()
-	syncer := setupTestSyncer(t)
-	defer func() { _ = syncer.Close() }()
-
-	// AutoSync is disabled by default in test setup
-	assert.False(t, syncer.config.AutoSync)
-
-	project := models.NewProject("test-project", nil)
-	err := syncer.QueueProjectChange(ctx, project, vault.OpUpsert)
-	require.NoError(t, err)
-
-	// Change should be queued but not synced
-	count, err := syncer.PendingCount(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, 1, count)
 }
 
 func TestSyncNotConfigured(t *testing.T) {

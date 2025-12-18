@@ -86,14 +86,15 @@ func NewSyncer(cfg *Config, appDB *sql.DB) (*Syncer, error) {
 		},
 	})
 
-	return &Syncer{
-		config:      cfg,
-		store:       store,
-		keys:        keys,
-		client:      client,
-		vaultSyncer: vault.NewSyncer(store, client, keys, cfg.UserID),
-		appDB:       appDB,
-	}, nil
+	syncer := &Syncer{
+		config: cfg,
+		store:  store,
+		keys:   keys,
+		client: client,
+		appDB:  appDB,
+	}
+	syncer.vaultSyncer = vault.NewSyncer(store, client, keys, cfg.UserID, syncer.applyChange)
+	return syncer, nil
 }
 
 // Close releases syncer resources.
@@ -181,20 +182,11 @@ func (s *Syncer) queueChange(ctx context.Context, entity, entityID string, op va
 		return errors.New("vault sync not configured")
 	}
 
-	if _, err := s.vaultSyncer.QueueChange(ctx, entity, entityID, op, payload); err != nil {
+	if _, err := s.vaultSyncer.QueueAndSync(ctx, entity, entityID, op, payload); err != nil {
 		return fmt.Errorf("queue change: %w", err)
 	}
 
-	// Auto-sync if enabled
-	if s.config.AutoSync && s.canSync() {
-		return s.Sync(ctx)
-	}
-
 	return nil
-}
-
-func (s *Syncer) canSync() bool {
-	return s.config.Server != "" && s.config.Token != "" && s.config.UserID != ""
 }
 
 // Sync pushes local changes and pulls remote changes.
@@ -204,11 +196,11 @@ func (s *Syncer) Sync(ctx context.Context) error {
 
 // SyncWithEvents pushes local changes and pulls remote changes with progress callbacks.
 func (s *Syncer) SyncWithEvents(ctx context.Context, events *vault.SyncEvents) error {
-	if !s.canSync() {
+	if !s.vaultSyncer.CanSync() {
 		return errors.New("sync not configured - run 'toki sync login' first")
 	}
 
-	err := vault.Sync(ctx, s.store, s.client, s.keys, s.config.UserID, s.applyChange, events)
+	err := s.vaultSyncer.Sync(ctx, events)
 	if err != nil {
 		if strings.Contains(err.Error(), "device") || strings.Contains(err.Error(), "403") {
 			return fmt.Errorf("device not registered - please run 'toki sync login' again: %w", err)

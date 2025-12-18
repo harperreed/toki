@@ -75,9 +75,9 @@ func TestFullWorkflow(t *testing.T) {
 func TestSyncInit(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Run sync init
 	output, err := run("sync", "init")
@@ -93,8 +93,8 @@ func TestSyncInit(t *testing.T) {
 		t.Error("Expected device ID in output")
 	}
 
-	// Verify config file was created
-	configPath := filepath.Join(configDir, ".config", "toki", "sync.json")
+	// Verify config file was created (XDG_CONFIG_HOME/toki/sync.json)
+	configPath := filepath.Join(configDir, "toki", "sync.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Config file was not created")
 	}
@@ -113,9 +113,9 @@ func TestSyncInit(t *testing.T) {
 func TestSyncStatus_NotConfigured(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Run sync status without init
 	output, err := run("sync", "status")
@@ -135,9 +135,9 @@ func TestSyncStatus_NotConfigured(t *testing.T) {
 func TestSyncStatus_AfterInit(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Init sync first
 	_, err := run("sync", "init")
@@ -167,9 +167,9 @@ func TestSyncStatus_AfterInit(t *testing.T) {
 func TestSyncPending_NotConfigured(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Run sync pending without init
 	output, err := run("sync", "pending")
@@ -185,9 +185,9 @@ func TestSyncPending_NotConfigured(t *testing.T) {
 func TestSyncPending_AfterInit(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Init sync first
 	_, err := run("sync", "init")
@@ -209,9 +209,9 @@ func TestSyncPending_AfterInit(t *testing.T) {
 func TestSyncLogout_WhenNotLoggedIn(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Init sync first
 	_, err := run("sync", "init")
@@ -233,9 +233,9 @@ func TestSyncLogout_WhenNotLoggedIn(t *testing.T) {
 func TestOfflineQueueing(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory
+	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
-	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
 
 	// Create a project
 	_, err := run("project", "add", "test-project")
@@ -288,16 +288,17 @@ func setupTestBinary(t *testing.T) func(args ...string) (string, error) {
 		t.Fatalf("Failed to get project root: %v", err)
 	}
 
-	tokiBinary := filepath.Join(projectRoot, "toki")
+	// Build binary in temp dir to avoid race conditions between tests
+	tmpDir := t.TempDir()
+	tokiBinary := filepath.Join(tmpDir, "toki")
 	buildCmd := exec.Command("go", "build", "-o", tokiBinary, "./cmd/toki") //nolint:gosec // Safe: building our own binary with fixed args
 	buildCmd.Dir = projectRoot
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build: %v\nOutput: %s", err, buildOutput)
 	}
-	t.Cleanup(func() { _ = os.Remove(tokiBinary) })
+	// No need for cleanup - t.TempDir() handles it
 
-	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	run := func(args ...string) (string, error) {

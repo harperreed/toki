@@ -958,7 +958,6 @@ type SyncStatusOutput struct {
 	Configured   bool   `json:"configured"`
 	Server       string `json:"server"`
 	PendingCount int    `json:"pending_count"`
-	AutoSync     bool   `json:"auto_sync"`
 	LastSync     string `json:"last_sync"`
 }
 
@@ -981,7 +980,6 @@ func (s *Server) handleSyncStatus(ctx context.Context, req *mcp.CallToolRequest,
 	output := SyncStatusOutput{
 		Configured: cfg.IsConfigured(),
 		Server:     cfg.Server,
-		AutoSync:   cfg.AutoSync,
 		LastSync:   "never",
 	}
 
