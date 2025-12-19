@@ -23,6 +23,7 @@ func (c *Client) CreateTag(tag *Tag) error {
 		return fmt.Errorf("failed to store tag: %w", err)
 	}
 
+	c.syncIfEnabled()
 	return nil
 }
 
@@ -101,5 +102,6 @@ func (c *Client) DeleteTag(name string) error {
 	if err := c.kv.Delete([]byte(key)); err != nil {
 		return fmt.Errorf("failed to delete tag: %w", err)
 	}
+	c.syncIfEnabled()
 	return nil
 }

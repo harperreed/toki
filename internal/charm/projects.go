@@ -24,6 +24,7 @@ func (c *Client) CreateProject(project *Project) error {
 		return fmt.Errorf("failed to store project: %w", err)
 	}
 
+	c.syncIfEnabled()
 	return nil
 }
 
@@ -120,5 +121,6 @@ func (c *Client) DeleteProject(id uuid.UUID) error {
 	if err := c.kv.Delete([]byte(key)); err != nil {
 		return fmt.Errorf("failed to delete project: %w", err)
 	}
+	c.syncIfEnabled()
 	return nil
 }

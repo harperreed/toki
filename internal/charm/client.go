@@ -107,6 +107,11 @@ func NewClient(dbName string) (*Client, error) {
 		return nil, fmt.Errorf("failed to open kv store: %w", err)
 	}
 
+	// Sync on startup to pull any remote changes
+	if cfg.AutoSync {
+		_ = db.Sync() // Best effort - don't fail startup on sync errors
+	}
+
 	return &Client{
 		kv:     db,
 		config: cfg,
@@ -124,6 +129,14 @@ func (c *Client) Close() error {
 // Sync synchronizes local data with the Charm server.
 func (c *Client) Sync() error {
 	return c.kv.Sync()
+}
+
+// syncIfEnabled syncs if auto-sync is enabled in config.
+// Call this after write operations.
+func (c *Client) syncIfEnabled() {
+	if c.config != nil && c.config.AutoSync {
+		_ = c.kv.Sync() // Best effort, don't fail writes on sync errors
+	}
 }
 
 // KV returns the underlying KV store for direct access.
