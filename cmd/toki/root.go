@@ -1,5 +1,5 @@
 // ABOUTME: Root Cobra command and global flags
-// ABOUTME: Sets up CLI structure and database connection
+// ABOUTME: Sets up CLI structure and Charm KV client
 
 package main
 
@@ -7,14 +7,13 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/harper/toki/internal/db"
+	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
 )
 
-var (
-	dbPath string
-	dbConn *sql.DB
-)
+// Deprecated: dbConn is kept temporarily for compatibility during migration.
+// Commands should use charm.GetClient() instead. Will be removed in Phase 3.
+var dbConn *sql.DB
 
 var rootCmd = &cobra.Command{
 	Use:   "toki",
@@ -33,24 +32,18 @@ Toki is a CLI todo manager that organizes tasks by project,
 supports rich metadata (priority, tags, notes, due dates),
 and automatically detects project context from git repositories.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Initialize database connection
-		var err error
-		dbConn, err = db.InitDB(dbPath)
-		if err != nil {
-			return fmt.Errorf("failed to initialize database: %w", err)
+		// Initialize Charm KV client
+		if err := charm.InitClient(); err != nil {
+			return fmt.Errorf("failed to initialize charm client: %w", err)
 		}
 		return nil
 	},
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-		// Close database connection
-		if dbConn != nil {
-			return dbConn.Close()
-		}
-		return nil
+		// Close Charm client
+		return charm.CloseClient()
 	},
 }
 
 func init() {
-	defaultPath := db.GetDefaultDBPath()
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", defaultPath, "database file path")
+	// No persistent flags needed - Charm manages its own configuration
 }
