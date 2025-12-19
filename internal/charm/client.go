@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/charmbracelet/charm/client"
 	"github.com/charmbracelet/charm/kv"
 )
 
@@ -133,4 +134,13 @@ func (c *Client) KV() *kv.KV {
 // Config returns the current configuration.
 func (c *Client) Config() *Config {
 	return c.config
+}
+
+// ID returns the Charm user ID for the current account.
+func (c *Client) ID() (string, error) {
+	cc, err := client.NewClientWithDefaults()
+	if err != nil {
+		return "", fmt.Errorf("failed to create charm client: %w", err)
+	}
+	return cc.ID()
 }

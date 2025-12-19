@@ -54,7 +54,15 @@ var syncStatusCmd = &cobra.Command{
 			return nil
 		}
 
-		color.Green("\nStatus: Connected to Charm Cloud")
+		// Get and display Charm ID
+		id, err := client.ID()
+		if err != nil {
+			color.Yellow("\nStatus: Connected (ID unavailable)")
+		} else {
+			color.Green("\nStatus: Connected to Charm Cloud")
+			fmt.Printf("ID:        %s\n", id)
+		}
+
 		fmt.Println("\nCharm uses SSH keys for authentication - no login required!")
 		fmt.Println("Sync happens automatically in the background.")
 
