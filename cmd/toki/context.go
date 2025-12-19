@@ -9,11 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/db"
+	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/git"
-	"github.com/harper/toki/internal/models"
 )
 
 // detectProjectContext attempts to find project from current directory.
@@ -31,7 +31,7 @@ func detectProjectContext() (*uuid.UUID, error) {
 	}
 
 	// Look up project by path
-	project, err := db.GetProjectByPath(dbConn, gitRoot)
+	project, err := charm.GetClient().GetProjectByPath(gitRoot)
 	if err == nil {
 		return &project.ID, nil
 	}
@@ -46,8 +46,13 @@ func detectProjectContext() (*uuid.UUID, error) {
 	response = strings.TrimSpace(strings.ToLower(response))
 
 	if response == "" || response == "y" || response == "yes" {
-		project := models.NewProject(projectName, &gitRoot)
-		if err := db.CreateProject(dbConn, project); err != nil {
+		project := &charm.Project{
+			ID:            uuid.New(),
+			Name:          projectName,
+			DirectoryPath: gitRoot,
+			CreatedAt:     time.Now().UTC(),
+		}
+		if err := charm.GetClient().CreateProject(project); err != nil {
 			return nil, fmt.Errorf("failed to create project: %w", err)
 		}
 		fmt.Printf("✓ Created project '%s'\n", projectName)
@@ -60,7 +65,7 @@ func detectProjectContext() (*uuid.UUID, error) {
 // getProjectID gets project ID from flag or context.
 func getProjectID(projectFlag string) (*uuid.UUID, error) {
 	if projectFlag != "" {
-		project, err := db.GetProjectByName(dbConn, projectFlag)
+		project, err := charm.GetClient().GetProjectByName(projectFlag)
 		if err != nil {
 			return nil, fmt.Errorf("project '%s' not found", projectFlag)
 		}
@@ -78,13 +83,9 @@ func getProjectID(projectFlag string) (*uuid.UUID, error) {
 	}
 
 	// No project context - use or create "default" project
-	project, err := db.GetProjectByName(dbConn, "default")
+	project, err := charm.GetClient().CreateDefaultProject()
 	if err != nil {
-		// Create default project if it doesn't exist
-		project = models.NewProject("default", nil)
-		if err := db.CreateProject(dbConn, project); err != nil {
-			return nil, fmt.Errorf("failed to create default project: %w", err)
-		}
+		return nil, fmt.Errorf("failed to create default project: %w", err)
 	}
 
 	return &project.ID, nil

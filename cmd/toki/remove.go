@@ -4,15 +4,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/harperreed/sweet/vault"
-
 	"github.com/fatih/color"
-	"github.com/harper/toki/internal/db"
-	"github.com/harper/toki/internal/models"
-	"github.com/harper/toki/internal/sync"
+	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
 )
 
@@ -24,25 +19,14 @@ var removeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		prefix := args[0]
 
-		todo, err := db.GetTodoByPrefix(dbConn, prefix)
+		charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
 		if err != nil {
 			return err
 		}
 
-		desc := todo.Description
+		desc := charmTodo.Description
 
-		// Get project name for sync (before delete)
-		project, err := db.GetProjectByID(dbConn, todo.ProjectID)
-		if err != nil {
-			return fmt.Errorf("failed to get project: %w", err)
-		}
-
-		// Queue sync BEFORE delete to preserve data
-		if err := queueTodoSyncRemove(cmd.Context(), todo, project.Name); err != nil {
-			color.Yellow("⚠ Sync: %v", err)
-		}
-
-		if err := db.DeleteTodo(dbConn, todo.ID); err != nil {
+		if err := charm.GetClient().DeleteTodo(charmTodo.ID); err != nil {
 			return fmt.Errorf("failed to delete todo: %w", err)
 		}
 
@@ -51,19 +35,6 @@ var removeCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func queueTodoSyncRemove(ctx context.Context, todo *models.Todo, projectName string) error {
-	cfg, err := sync.LoadConfig()
-	if err != nil || !cfg.IsConfigured() {
-		return nil // Sync not configured, skip silently
-	}
-	syncer, err := sync.NewSyncer(cfg, dbConn)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = syncer.Close() }()
-	return syncer.QueueTodoChange(ctx, todo, projectName, vault.OpDelete)
 }
 
 func init() {

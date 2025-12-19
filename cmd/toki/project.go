@@ -4,16 +4,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
-
-	"github.com/harperreed/sweet/vault"
+	"time"
 
 	"github.com/fatih/color"
-	"github.com/harper/toki/internal/db"
+	"github.com/google/uuid"
+	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/git"
-	"github.com/harper/toki/internal/models"
-	"github.com/harper/toki/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -32,30 +29,30 @@ var projectAddCmd = &cobra.Command{
 		name := args[0]
 
 		pathFlag, _ := cmd.Flags().GetString("path")
-		var dirPath *string
+		dirPath := ""
 
 		if pathFlag != "" {
 			normalized, err := git.NormalizePath(pathFlag)
 			if err != nil {
 				return fmt.Errorf("invalid path: %w", err)
 			}
-			dirPath = &normalized
+			dirPath = normalized
 		}
 
-		project := models.NewProject(name, dirPath)
+		project := &charm.Project{
+			ID:            uuid.New(),
+			Name:          name,
+			DirectoryPath: dirPath,
+			CreatedAt:     time.Now().UTC(),
+		}
 
-		if err := db.CreateProject(dbConn, project); err != nil {
+		if err := charm.GetClient().CreateProject(project); err != nil {
 			return fmt.Errorf("failed to create project: %w", err)
 		}
 
-		// Queue sync after successful creation
-		if err := queueProjectSyncAdd(cmd.Context(), project); err != nil {
-			color.Yellow("⚠ Sync: %v", err)
-		}
-
 		color.Green("✓ Created project '%s'", name)
-		if dirPath != nil {
-			fmt.Printf("  Path: %s\n", *dirPath)
+		if dirPath != "" {
+			fmt.Printf("  Path: %s\n", dirPath)
 		}
 
 		return nil
@@ -67,7 +64,7 @@ var projectListCmd = &cobra.Command{
 	Aliases: []string{"ls", "l"},
 	Short:   "List all projects",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projects, err := db.ListProjects(dbConn)
+		projects, err := charm.GetClient().ListProjects()
 		if err != nil {
 			return fmt.Errorf("failed to list projects: %w", err)
 		}
@@ -82,8 +79,8 @@ var projectListCmd = &cobra.Command{
 
 		for _, p := range projects {
 			fmt.Printf("%s\n", color.New(color.Bold, color.FgCyan).Sprint(p.Name))
-			if p.DirectoryPath != nil {
-				fmt.Printf("  %s\n", color.New(color.Faint).Sprint(*p.DirectoryPath))
+			if p.DirectoryPath != "" {
+				fmt.Printf("  %s\n", color.New(color.Faint).Sprint(p.DirectoryPath))
 			}
 		}
 
@@ -100,7 +97,7 @@ var projectSetPathCmd = &cobra.Command{
 		name := args[0]
 		pathArg := args[1]
 
-		project, err := db.GetProjectByName(dbConn, name)
+		project, err := charm.GetClient().GetProjectByName(name)
 		if err != nil {
 			return fmt.Errorf("project not found: %w", err)
 		}
@@ -110,19 +107,10 @@ var projectSetPathCmd = &cobra.Command{
 			return fmt.Errorf("invalid path: %w", err)
 		}
 
-		if err := db.UpdateProjectPath(dbConn, project.ID, &normalized); err != nil {
+		project.DirectoryPath = normalized
+
+		if err := charm.GetClient().UpdateProject(project); err != nil {
 			return fmt.Errorf("failed to update path: %w", err)
-		}
-
-		// After db.UpdateProjectPath succeeds, fetch updated project and queue sync
-		updatedProject, err := db.GetProjectByID(dbConn, project.ID)
-		if err != nil {
-			return fmt.Errorf("failed to get project: %w", err)
-		}
-
-		// Queue sync after successful update
-		if err := queueProjectSyncAdd(cmd.Context(), updatedProject); err != nil {
-			color.Yellow("⚠ Sync: %v", err)
 		}
 
 		color.Green("✓ Updated path for '%s'", name)
@@ -140,17 +128,12 @@ var projectRemoveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
-		project, err := db.GetProjectByName(dbConn, name)
+		project, err := charm.GetClient().GetProjectByName(name)
 		if err != nil {
 			return fmt.Errorf("project not found: %w", err)
 		}
 
-		// Queue sync BEFORE delete to preserve data
-		if err := queueProjectSyncRemove(cmd.Context(), project); err != nil {
-			color.Yellow("⚠ Sync: %v", err)
-		}
-
-		if err := db.DeleteProject(dbConn, project.ID); err != nil {
+		if err := charm.GetClient().DeleteProject(project.ID); err != nil {
 			return fmt.Errorf("failed to delete project: %w", err)
 		}
 
@@ -158,32 +141,6 @@ var projectRemoveCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func queueProjectSyncAdd(ctx context.Context, project *models.Project) error {
-	cfg, err := sync.LoadConfig()
-	if err != nil || !cfg.IsConfigured() {
-		return nil // Sync not configured, skip silently
-	}
-	syncer, err := sync.NewSyncer(cfg, dbConn)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = syncer.Close() }()
-	return syncer.QueueProjectChange(ctx, project, vault.OpUpsert)
-}
-
-func queueProjectSyncRemove(ctx context.Context, project *models.Project) error {
-	cfg, err := sync.LoadConfig()
-	if err != nil || !cfg.IsConfigured() {
-		return nil // Sync not configured, skip silently
-	}
-	syncer, err := sync.NewSyncer(cfg, dbConn)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = syncer.Close() }()
-	return syncer.QueueProjectChange(ctx, project, vault.OpDelete)
 }
 
 func init() {

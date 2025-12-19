@@ -8,11 +8,12 @@ import (
 	"fmt"
 
 	"github.com/harper/toki/internal/charm"
+	"github.com/harper/toki/internal/db"
 	"github.com/spf13/cobra"
 )
 
-// Deprecated: dbConn is kept temporarily for compatibility during migration.
-// Commands should use charm.GetClient() instead. Will be removed in Phase 3.
+// Deprecated: dbConn is kept temporarily for sync/mcp commands only.
+// All other commands use charm.GetClient(). Will be removed when sync layer is deprecated.
 var dbConn *sql.DB
 
 var rootCmd = &cobra.Command{
@@ -36,9 +37,22 @@ and automatically detects project context from git repositories.`,
 		if err := charm.InitClient(); err != nil {
 			return fmt.Errorf("failed to initialize charm client: %w", err)
 		}
+
+		// Initialize SQLite DB for sync/mcp commands only
+		var err error
+		dbConn, err = db.InitDB(db.GetDefaultDBPath())
+		if err != nil {
+			return fmt.Errorf("failed to initialize database: %w", err)
+		}
+
 		return nil
 	},
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		// Close database
+		if dbConn != nil {
+			_ = dbConn.Close()
+		}
+
 		// Close Charm client
 		return charm.CloseClient()
 	},

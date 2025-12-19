@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/db"
+	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/models"
 	"github.com/harper/toki/internal/ui"
 	"github.com/spf13/cobra"
@@ -59,13 +59,21 @@ var listCmd = &cobra.Command{
 			tag = &tagFlag
 		}
 
+		// Build filter
+		filter := &charm.TodoFilter{
+			ProjectID: projectID,
+			Done:      done,
+			Priority:  priority,
+			Tag:       tag,
+		}
+
 		// Get todos
-		todos, err := db.ListTodos(dbConn, projectID, done, priority, tag)
+		charmTodos, err := charm.GetClient().ListTodos(filter)
 		if err != nil {
 			return fmt.Errorf("failed to list todos: %w", err)
 		}
 
-		if len(todos) == 0 {
+		if len(charmTodos) == 0 {
 			fmt.Println("No todos found. Add one with 'toki add <description>'")
 			return nil
 		}
@@ -76,8 +84,15 @@ var listCmd = &cobra.Command{
 			tags []*models.Tag
 		})
 
-		for _, todo := range todos {
-			tags, _ := db.GetTodoTags(dbConn, todo.ID)
+		for _, charmTodo := range charmTodos {
+			todo := charm.ToModelsTodo(charmTodo)
+
+			// Convert string tags to models.Tag
+			modelTags := make([]*models.Tag, len(charmTodo.Tags))
+			for i, tagName := range charmTodo.Tags {
+				modelTags[i] = &models.Tag{Name: tagName}
+			}
+
 			if projectTodos[todo.ProjectID] == nil {
 				projectTodos[todo.ProjectID] = []*struct {
 					todo *models.Todo
@@ -87,16 +102,17 @@ var listCmd = &cobra.Command{
 			projectTodos[todo.ProjectID] = append(projectTodos[todo.ProjectID], &struct {
 				todo *models.Todo
 				tags []*models.Tag
-			}{todo, tags})
+			}{todo, modelTags})
 		}
 
 		// Display grouped by project
 		totalCount := 0
 		for projID, items := range projectTodos {
-			project, err := db.GetProjectByID(dbConn, projID)
+			charmProject, err := charm.GetClient().GetProject(projID)
 			if err != nil {
 				continue
 			}
+			project := charm.ToModelsProject(charmProject)
 
 			fmt.Println(ui.FormatProjectHeader(project))
 			fmt.Println(ui.FormatSeparator())

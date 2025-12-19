@@ -4,16 +4,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
-	"github.com/harperreed/sweet/vault"
-
 	"github.com/fatih/color"
-	"github.com/google/uuid"
-	"github.com/harper/toki/internal/db"
-	"github.com/harper/toki/internal/sync"
+	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
 )
 
@@ -31,22 +26,17 @@ var tagAddCmd = &cobra.Command{
 		prefix := args[0]
 		tagName := strings.ToLower(args[1])
 
-		todo, err := db.GetTodoByPrefix(dbConn, prefix)
+		charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
 		if err != nil {
 			return err
 		}
 
-		if err := db.AddTagToTodo(dbConn, todo.ID, tagName); err != nil {
+		if err := charm.GetClient().AddTagToTodo(charmTodo.ID, tagName); err != nil {
 			return fmt.Errorf("failed to add tag: %w", err)
 		}
 
-		// Queue sync after successful tag addition
-		if err := queueTodoTagSyncTag(cmd.Context(), todo.ID, tagName, vault.OpUpsert); err != nil {
-			color.Yellow("⚠ Sync: %v", err)
-		}
-
 		color.Green("✓ Added tag '%s'", tagName)
-		fmt.Printf("  %s\n", todo.Description)
+		fmt.Printf("  %s\n", charmTodo.Description)
 
 		return nil
 	},
@@ -61,22 +51,17 @@ var tagRemoveCmd = &cobra.Command{
 		prefix := args[0]
 		tagName := strings.ToLower(args[1])
 
-		todo, err := db.GetTodoByPrefix(dbConn, prefix)
+		charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
 		if err != nil {
 			return err
 		}
 
-		// Queue sync BEFORE delete to preserve data
-		if err := queueTodoTagSyncTag(cmd.Context(), todo.ID, tagName, vault.OpDelete); err != nil {
-			color.Yellow("⚠ Sync: %v", err)
-		}
-
-		if err := db.RemoveTagFromTodo(dbConn, todo.ID, tagName); err != nil {
+		if err := charm.GetClient().RemoveTagFromTodo(charmTodo.ID, tagName); err != nil {
 			return fmt.Errorf("failed to remove tag: %w", err)
 		}
 
 		color.Yellow("✓ Removed tag '%s'", tagName)
-		fmt.Printf("  %s\n", todo.Description)
+		fmt.Printf("  %s\n", charmTodo.Description)
 
 		return nil
 	},
@@ -86,7 +71,7 @@ var tagsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tags",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tags, err := db.ListAllTags(dbConn)
+		tags, err := charm.GetClient().ListTags()
 		if err != nil {
 			return fmt.Errorf("failed to list tags: %w", err)
 		}
@@ -103,19 +88,6 @@ var tagsListCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func queueTodoTagSyncTag(ctx context.Context, todoID uuid.UUID, tagName string, op vault.Op) error {
-	cfg, err := sync.LoadConfig()
-	if err != nil || !cfg.IsConfigured() {
-		return nil // Sync not configured, skip silently
-	}
-	syncer, err := sync.NewSyncer(cfg, dbConn)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = syncer.Close() }()
-	return syncer.QueueTodoTagChange(ctx, todoID, tagName, op)
 }
 
 func init() {

@@ -12,32 +12,7 @@ import (
 )
 
 func TestFullWorkflow(t *testing.T) {
-	// Get project root directory
-	projectRoot, err := filepath.Abs("..")
-	if err != nil {
-		t.Fatalf("Failed to get project root: %v", err)
-	}
-
-	// Build toki binary
-	tokiBinary := filepath.Join(projectRoot, "toki")
-	buildCmd := exec.Command("go", "build", "-o", tokiBinary, "./cmd/toki") //nolint:gosec // Safe: building our own binary with fixed args
-	buildCmd.Dir = projectRoot
-	buildOutput, err := buildCmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Failed to build: %v\nOutput: %s", err, buildOutput)
-	}
-	defer func() { _ = os.Remove(tokiBinary) }()
-
-	// Use temp database
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
-
-	run := func(args ...string) (string, error) {
-		fullArgs := append([]string{"--db", dbPath}, args...)
-		cmd := exec.Command(tokiBinary, fullArgs...) //nolint:gosec // Safe: executing our own test binary with controlled args
-		output, err := cmd.CombinedOutput()
-		return string(output), err
-	}
+	run := setupTestBinary(t)
 
 	// Create project
 	output, err := run("project", "add", "test-project")
@@ -73,11 +48,7 @@ func TestFullWorkflow(t *testing.T) {
 }
 
 func TestSyncInit(t *testing.T) {
-	run := setupTestBinary(t)
-
-	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
-	configDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configDir)
+	run, configDir := setupTestBinaryWithDirs(t)
 
 	// Run sync init
 	output, err := run("sync", "init")
@@ -282,6 +253,11 @@ func TestOfflineQueueing(t *testing.T) {
 }
 
 func setupTestBinary(t *testing.T) func(args ...string) (string, error) {
+	run, _ := setupTestBinaryWithDirs(t)
+	return run
+}
+
+func setupTestBinaryWithDirs(t *testing.T) (func(args ...string) (string, error), string) {
 	t.Helper()
 	projectRoot, err := filepath.Abs("..")
 	if err != nil {
@@ -299,16 +275,20 @@ func setupTestBinary(t *testing.T) func(args ...string) (string, error) {
 	}
 	// No need for cleanup - t.TempDir() handles it
 
-	dbPath := filepath.Join(tmpDir, "test.db")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
 
 	run := func(args ...string) (string, error) {
-		fullArgs := append([]string{"--db", dbPath}, args...)
-		cmd := exec.Command(tokiBinary, fullArgs...) //nolint:gosec // Safe: executing our own test binary with controlled args
+		cmd := exec.Command(tokiBinary, args...) //nolint:gosec // Safe: executing our own test binary with controlled args
+		cmd.Env = append(os.Environ(),
+			"XDG_DATA_HOME="+dataDir,
+			"XDG_CONFIG_HOME="+configDir,
+		)
 		output, err := cmd.CombinedOutput()
 		return string(output), err
 	}
 
-	return run
+	return run, configDir
 }
 
 func extractTodoPrefix(output string) string {
