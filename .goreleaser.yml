@@ -5,7 +5,8 @@ version: 2
 before:
   hooks:
     - go mod tidy
-    - go test ./...
+    # Skip charm tests in release - they require network access to Charm server
+    - go test ./cmd/... ./internal/git/... ./internal/models/... ./internal/ui/... ./test/...
 
 builds:
   - id: toki
