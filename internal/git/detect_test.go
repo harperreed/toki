@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +16,15 @@ func setupGitRepo(t *testing.T) string {
 
 	cmd := exec.Command("git", "init")
 	cmd.Dir = tmpDir
+	// Filter out GIT_DIR and GIT_WORK_TREE from environment to ensure
+	// git init works correctly in worktree environments and pre-commit hooks
+	env := []string{}
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GIT_DIR=") && !strings.HasPrefix(e, "GIT_WORK_TREE=") {
+			env = append(env, e)
+		}
+	}
+	cmd.Env = env
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to init git repo: %v", err)
 	}
