@@ -31,3 +31,4 @@ coverage.txt
 # Added by goreleaser init:
 dist/
 .scratch/
+.worktrees/
