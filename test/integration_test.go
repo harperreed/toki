@@ -4,34 +4,39 @@
 package test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFullWorkflow(t *testing.T) {
 	run := setupTestBinary(t)
 
+	// Use unique project name to avoid sync conflicts
+	projectName := fmt.Sprintf("test-project-%d", time.Now().UnixNano())
+
 	// Create project
-	output, err := run("project", "add", "test-project")
+	output, err := run("project", "add", projectName)
 	if err != nil {
 		t.Fatalf("Failed to create project: %v\n%s", err, output)
 	}
 
-	if !strings.Contains(output, "Created project") {
+	if !strings.Contains(output, "Created project") && !strings.Contains(output, "already exists") {
 		t.Error("Expected success message")
 	}
 
 	// Add todo
-	output, err = run("add", "test todo", "--project", "test-project", "--priority", "high")
+	output, err = run("add", "test todo", "--project", projectName, "--priority", "high")
 	if err != nil {
 		t.Fatalf("Failed to add todo: %v\n%s", err, output)
 	}
 
 	// List todos
-	output, err = run("list", "--project", "test-project")
+	output, err = run("list", "--project", projectName)
 	if err != nil {
 		t.Fatalf("Failed to list todos: %v\n%s", err, output)
 	}

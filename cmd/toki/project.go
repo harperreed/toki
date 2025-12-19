@@ -28,6 +28,16 @@ var projectAddCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
+		// Check if project already exists
+		existingProject, err := charm.GetClient().GetProjectByName(name)
+		if err == nil {
+			color.Yellow("Project '%s' already exists (ID: %s)", name, existingProject.ID.String()[:8])
+			if existingProject.DirectoryPath != "" {
+				fmt.Printf("  Path: %s\n", existingProject.DirectoryPath)
+			}
+			return nil
+		}
+
 		pathFlag, _ := cmd.Flags().GetString("path")
 		dirPath := ""
 
@@ -160,6 +170,82 @@ var projectRemoveCmd = &cobra.Command{
 	},
 }
 
+var projectCleanupCmd = &cobra.Command{
+	Use:   "cleanup",
+	Short: "Remove duplicate projects (keeps first occurrence)",
+	Long: `Removes duplicate projects that have the same name.
+
+This is useful when sync has caused multiple projects with the same name
+to exist. The first project (by creation time) is kept, duplicates are removed.
+Todos attached to duplicate projects are reassigned to the kept project.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projects, err := charm.GetClient().ListProjects()
+		if err != nil {
+			return fmt.Errorf("failed to list projects: %w", err)
+		}
+
+		// Group projects by name
+		projectsByName := make(map[string][]*charm.Project)
+		for _, p := range projects {
+			projectsByName[p.Name] = append(projectsByName[p.Name], p)
+		}
+
+		totalRemoved := 0
+		totalTodosMoved := 0
+
+		for name, projs := range projectsByName {
+			if len(projs) <= 1 {
+				continue
+			}
+
+			// Keep the first one (oldest by CreatedAt)
+			keep := projs[0]
+			for _, p := range projs[1:] {
+				if p.CreatedAt.Before(keep.CreatedAt) {
+					keep = p
+				}
+			}
+
+			// Remove duplicates and move their todos
+			for _, p := range projs {
+				if p.ID == keep.ID {
+					continue
+				}
+
+				// Move todos from duplicate to kept project
+				filter := &charm.TodoFilter{ProjectID: &p.ID}
+				todos, err := charm.GetClient().ListTodos(filter)
+				if err == nil {
+					for _, todo := range todos {
+						todo.ProjectID = keep.ID
+						_ = charm.GetClient().UpdateTodo(todo)
+						totalTodosMoved++
+					}
+				}
+
+				// Delete duplicate project
+				if err := charm.GetClient().DeleteProject(p.ID); err != nil {
+					fmt.Printf("Warning: failed to delete duplicate project %s: %v\n", p.ID, err)
+				} else {
+					totalRemoved++
+				}
+			}
+
+			if len(projs) > 1 {
+				fmt.Printf("  '%s': kept 1, removed %d duplicates\n", name, len(projs)-1)
+			}
+		}
+
+		if totalRemoved == 0 {
+			fmt.Println("No duplicate projects found.")
+		} else {
+			color.Green("✓ Removed %d duplicate projects, moved %d todos", totalRemoved, totalTodosMoved)
+		}
+
+		return nil
+	},
+}
+
 func init() {
 	projectAddCmd.Flags().String("path", "", "directory path to associate with project")
 
@@ -167,5 +253,6 @@ func init() {
 	projectCmd.AddCommand(projectListCmd)
 	projectCmd.AddCommand(projectSetPathCmd)
 	projectCmd.AddCommand(projectRemoveCmd)
+	projectCmd.AddCommand(projectCleanupCmd)
 	rootCmd.AddCommand(projectCmd)
 }

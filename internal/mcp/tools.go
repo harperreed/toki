@@ -855,6 +855,29 @@ func (s *Server) registerAddProjectTool() {
 }
 
 func (s *Server) handleAddProject(_ context.Context, req *mcp.CallToolRequest, input AddProjectInput) (*mcp.CallToolResult, ProjectOutput, error) {
+	// Check if project with this name already exists
+	existingProject, err := s.client.GetProjectByName(input.Name)
+	if err == nil {
+		// Project exists - return existing project
+		var path *string
+		if existingProject.DirectoryPath != "" {
+			path = &existingProject.DirectoryPath
+		}
+		output := ProjectOutput{
+			ID:        existingProject.ID.String(),
+			Name:      existingProject.Name,
+			Path:      path,
+			CreatedAt: existingProject.CreatedAt,
+		}
+		jsonBytes, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			return nil, output, fmt.Errorf("failed to marshal output: %w", err)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Project '%s' already exists:\n%s", input.Name, string(jsonBytes))}},
+		}, output, nil
+	}
+
 	modelsProject := models.NewProject(input.Name, input.Path)
 	charmProject := charm.FromModelsProject(modelsProject)
 

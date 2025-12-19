@@ -24,12 +24,14 @@ to your Charm account.
 
 Commands:
   status  - Show sync status and configuration
+  now     - Trigger immediate sync
   link    - Link this device to your Charm account
   unlink  - Unlink this device from Charm account
   wipe    - Clear all local/remote data
 
 Examples:
   toki sync status
+  toki sync now
   toki sync link`,
 }
 
@@ -143,6 +145,29 @@ You can re-link later with 'toki sync link'.`,
 	},
 }
 
+var syncNowCmd = &cobra.Command{
+	Use:   "now",
+	Short: "Trigger immediate sync with Charm Cloud",
+	Long: `Force an immediate sync with Charm Cloud.
+
+This pushes local changes and pulls remote changes from other devices.
+Normally sync happens automatically, but use this to force a refresh.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := charm.GetClient()
+		if client == nil {
+			return fmt.Errorf("client not initialized - run 'toki sync link' first")
+		}
+
+		fmt.Println("Syncing with Charm Cloud...")
+		if err := client.Sync(); err != nil {
+			return fmt.Errorf("sync failed: %w", err)
+		}
+
+		color.Green("✓ Sync complete")
+		return nil
+	},
+}
+
 var syncWipeCmd = &cobra.Command{
 	Use:   "wipe",
 	Short: "Clear all local/remote data",
@@ -193,6 +218,7 @@ After wipe, your todos will be gone. Use with caution!`,
 
 func init() {
 	syncCmd.AddCommand(syncStatusCmd)
+	syncCmd.AddCommand(syncNowCmd)
 	syncCmd.AddCommand(syncLinkCmd)
 	syncCmd.AddCommand(syncUnlinkCmd)
 	syncCmd.AddCommand(syncWipeCmd)
