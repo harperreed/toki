@@ -5,7 +5,6 @@ package charm
 
 import (
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -15,23 +14,18 @@ import (
 func setupTestClient(t *testing.T) (*Client, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "toki-charm-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
+	tmpDir := t.TempDir() // automatically cleaned up
 
-	_ = os.Setenv("CHARM_DATA_DIR", tmpDir)
+	// Use t.Setenv for test-scoped env var (avoids race conditions in parallel tests)
+	t.Setenv("CHARM_DATA_DIR", tmpDir)
 
 	client, err := NewClient("toki-test-" + uuid.New().String()[:8])
 	if err != nil {
-		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create client: %v", err)
 	}
 
 	cleanup := func() {
 		_ = client.Close()
-		_ = os.RemoveAll(tmpDir)
-		_ = os.Unsetenv("CHARM_DATA_DIR")
 	}
 
 	return client, cleanup

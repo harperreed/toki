@@ -8,7 +8,10 @@ test:
 	go test ./test/... -v
 
 test-race:
-	go test -race ./...
+	# Run charm tests without race detector (badger has internal goroutine races)
+	go test ./internal/charm/... -v
+	# Run all other tests with race detector
+	go test -race ./cmd/... ./internal/git/... ./internal/models/... ./internal/ui/... ./test/...
 
 test-coverage:
 	go test -coverprofile=coverage.out -covermode=atomic ./...

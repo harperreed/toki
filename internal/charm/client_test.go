@@ -4,22 +4,16 @@
 package charm
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestNewClient(t *testing.T) {
-	// Use temp directory for test data
-	tmpDir, err := os.MkdirTemp("", "toki-charm-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	// Use temp directory for test data (automatically cleaned up)
+	tmpDir := t.TempDir()
 
-	// Set CHARM_DATA_DIR to isolate test
-	_ = os.Setenv("CHARM_DATA_DIR", tmpDir)
-	defer func() { _ = os.Unsetenv("CHARM_DATA_DIR") }()
+	// Set CHARM_DATA_DIR to isolate test (test-scoped, avoids race conditions)
+	t.Setenv("CHARM_DATA_DIR", tmpDir)
 
 	client, err := NewClient("toki-test")
 	if err != nil {
@@ -44,8 +38,7 @@ func TestClientConfig(t *testing.T) {
 }
 
 func TestConfigFromEnv(t *testing.T) {
-	_ = os.Setenv("CHARM_HOST", "custom.server.com")
-	defer func() { _ = os.Unsetenv("CHARM_HOST") }()
+	t.Setenv("CHARM_HOST", "custom.server.com")
 
 	cfg := DefaultConfig()
 	cfg.ApplyEnv()
@@ -56,12 +49,9 @@ func TestConfigFromEnv(t *testing.T) {
 }
 
 func TestConfigPath(t *testing.T) {
-	// Test with XDG_CONFIG_HOME set
-	tmpDir, _ := os.MkdirTemp("", "toki-config-test-*")
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+	// Test with XDG_CONFIG_HOME set (test-scoped, avoids race conditions)
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	path := ConfigPath()
 	expected := filepath.Join(tmpDir, "toki", "charm.json")
