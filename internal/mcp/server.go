@@ -5,22 +5,22 @@ package mcp
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
+	"github.com/harper/toki/internal/charm"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Server wraps MCP server with database connection.
+// Server wraps MCP server with Charm KV client.
 type Server struct {
-	mcp *mcp.Server
-	db  *sql.DB
+	mcp    *mcp.Server
+	client *charm.Client
 }
 
 // NewServer creates MCP server with all capabilities.
-func NewServer(db *sql.DB) (*Server, error) {
-	if db == nil {
-		return nil, fmt.Errorf("database connection is required")
+func NewServer(client *charm.Client) (*Server, error) {
+	if client == nil {
+		return nil, fmt.Errorf("charm client is required")
 	}
 
 	mcpServer := mcp.NewServer(
@@ -32,8 +32,8 @@ func NewServer(db *sql.DB) (*Server, error) {
 	)
 
 	s := &Server{
-		mcp: mcpServer,
-		db:  db,
+		mcp:    mcpServer,
+		client: client,
 	}
 
 	// Register tools, resources, prompts

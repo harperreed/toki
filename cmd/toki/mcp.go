@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/mcp"
 	"github.com/spf13/cobra"
 )
@@ -35,14 +36,15 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Database is initialized by root command's PersistentPreRunE
-	// and available via the global dbConn variable
-	if dbConn == nil {
-		return fmt.Errorf("database connection not initialized")
+	// Charm client is initialized by root command's PersistentPreRunE
+	// and available via charm.GetClient()
+	client := charm.GetClient()
+	if client == nil {
+		return fmt.Errorf("charm client not initialized")
 	}
 
-	// Create MCP server with database connection
-	server, err := mcp.NewServer(dbConn)
+	// Create MCP server with Charm client
+	server, err := mcp.NewServer(client)
 	if err != nil {
 		return err
 	}

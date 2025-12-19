@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/db"
+	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/models"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -59,21 +59,21 @@ func (s *Server) registerProjectsResource() {
 		Description: "List all projects with metadata including name, directory path, and creation time",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		projects, err := db.ListProjects(s.db)
+		charmProjects, err := s.client.ListProjects()
 		if err != nil {
 			return nil, fmt.Errorf("failed to list projects: %w", err)
 		}
 
 		// Convert to output format
-		projectOutputs := make([]map[string]interface{}, 0, len(projects))
-		for _, proj := range projects {
+		projectOutputs := make([]map[string]interface{}, 0, len(charmProjects))
+		for _, proj := range charmProjects {
 			output := map[string]interface{}{
 				"id":         proj.ID.String(),
 				"name":       proj.Name,
 				"created_at": proj.CreatedAt,
 			}
-			if proj.DirectoryPath != nil {
-				output["directory_path"] = *proj.DirectoryPath
+			if proj.DirectoryPath != "" {
+				output["directory_path"] = proj.DirectoryPath
 			}
 			projectOutputs = append(projectOutputs, output)
 		}
@@ -231,7 +231,7 @@ func (s *Server) handleTodoResource(
 	}, nil
 }
 
-// fetchAndFilterTodos retrieves todos from database and applies filters.
+// fetchAndFilterTodos retrieves todos from Charm KV and applies filters.
 func (s *Server) fetchAndFilterTodos(
 	projectID *uuid.UUID,
 	done *bool,
@@ -239,16 +239,30 @@ func (s *Server) fetchAndFilterTodos(
 	tag *string,
 	overdue bool,
 ) ([]*models.Todo, error) {
-	todos, err := db.ListTodos(s.db, projectID, done, priority, tag)
+	// Build filter
+	filter := &charm.TodoFilter{
+		ProjectID: projectID,
+		Done:      done,
+		Priority:  priority,
+		Tag:       tag,
+	}
+
+	charmTodos, err := s.client.ListTodos(filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
 
-	if overdue {
-		todos = filterOverdueTodos(todos)
+	// Convert to models.Todo
+	modelsTodos := make([]*models.Todo, 0, len(charmTodos))
+	for _, charmTodo := range charmTodos {
+		modelsTodos = append(modelsTodos, charm.ToModelsTodo(charmTodo))
 	}
 
-	return todos, nil
+	if overdue {
+		modelsTodos = filterOverdueTodos(modelsTodos)
+	}
+
+	return modelsTodos, nil
 }
 
 // buildTodoOutputs converts todos to JSON-serializable format.
@@ -256,14 +270,9 @@ func (s *Server) buildTodoOutputs(todos []*models.Todo) ([]map[string]interface{
 	todoOutputs := make([]map[string]interface{}, 0, len(todos))
 
 	for _, todo := range todos {
-		tags, err := db.GetTodoTags(s.db, todo.ID)
+		tags, err := s.client.GetTagsForTodo(todo.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get tags: %w", err)
-		}
-
-		tagNames := make([]string, 0, len(tags))
-		for _, t := range tags {
-			tagNames = append(tagNames, t.Name)
 		}
 
 		output := map[string]interface{}{
@@ -272,7 +281,7 @@ func (s *Server) buildTodoOutputs(todos []*models.Todo) ([]map[string]interface{
 			"description": todo.Description,
 			"done":        todo.Done,
 			"created_at":  todo.CreatedAt,
-			"tags":        tagNames,
+			"tags":        tags,
 		}
 
 		if todo.Priority != nil {
@@ -448,15 +457,27 @@ type OldestPendingTodo struct {
 //nolint:funlen // Stats calculation aggregates multiple data sources in a single pass
 func (s *Server) calculateStats() (*StatsData, error) {
 	// Fetch all todos
-	allTodos, err := db.ListTodos(s.db, nil, nil, nil, nil)
+	charmTodos, err := s.client.ListTodos(&charm.TodoFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
 
+	// Convert to models.Todo
+	allTodos := make([]*models.Todo, 0, len(charmTodos))
+	for _, charmTodo := range charmTodos {
+		allTodos = append(allTodos, charm.ToModelsTodo(charmTodo))
+	}
+
 	// Fetch all projects
-	projects, err := db.ListProjects(s.db)
+	charmProjects, err := s.client.ListProjects()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	// Convert to models.Project
+	projects := make([]*models.Project, 0, len(charmProjects))
+	for _, charmProject := range charmProjects {
+		projects = append(projects, charm.ToModelsProject(charmProject))
 	}
 
 	// Calculate summary stats

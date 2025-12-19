@@ -5,17 +5,13 @@ package mcp
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/harperreed/sweet/vault"
-
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/db"
+	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/models"
-	"github.com/harper/toki/internal/sync"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -197,7 +193,7 @@ func (s *Server) parseAndVerifyProjectID(projectIDStr string) (uuid.UUID, error)
 		return uuid.Nil, fmt.Errorf("invalid project_id: must be a valid UUID. Use the project's full UUID. Error: %w", err)
 	}
 
-	_, err = db.GetProjectByID(s.db, projectID)
+	_, err = s.client.GetProject(projectID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("project not found: no project exists with ID '%s'. Create the project first or omit project_id to use default", projectID)
 	}
@@ -206,14 +202,9 @@ func (s *Server) parseAndVerifyProjectID(projectIDStr string) (uuid.UUID, error)
 }
 
 func (s *Server) getOrCreateDefaultProject() (uuid.UUID, error) {
-	project, err := db.GetProjectByName(s.db, "default")
-	if err == nil {
-		return project.ID, nil
-	}
-
-	project = models.NewProject("default", nil)
-	if err := db.CreateProject(s.db, project); err != nil {
-		return uuid.Nil, fmt.Errorf("failed to create default project: %w", err)
+	project, err := s.client.CreateDefaultProject()
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get or create default project: %w", err)
 	}
 	return project.ID, nil
 }
@@ -241,22 +232,28 @@ func parseDueDate(dueDateStr *string) (*time.Time, error) {
 }
 
 func (s *Server) createTodoWithTags(projectID uuid.UUID, input AddTodoInput, dueDate *time.Time) (*models.Todo, error) {
-	todo := models.NewTodo(projectID, input.Description)
-	todo.Priority = input.Priority
-	todo.Notes = input.Notes
-	todo.DueDate = dueDate
+	modelsTodo := models.NewTodo(projectID, input.Description)
+	modelsTodo.Priority = input.Priority
+	modelsTodo.Notes = input.Notes
+	modelsTodo.DueDate = dueDate
 
-	if err := db.CreateTodo(s.db, todo); err != nil {
+	// Get project name for conversion
+	project, err := s.client.GetProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// Convert to charm.Todo
+	charmTodo := charm.FromModelsTodo(modelsTodo, project.Name, input.Tags)
+
+	if err := s.client.CreateTodo(charmTodo); err != nil {
 		return nil, fmt.Errorf("failed to create todo: %w", err)
 	}
 
-	for _, tag := range input.Tags {
-		if err := db.AddTagToTodo(s.db, todo.ID, tag); err != nil {
-			return nil, fmt.Errorf("failed to add tag '%s': %w", tag, err)
-		}
-	}
+	// Tags are already set in charm.Todo, no need to add them separately
 
-	return todo, nil
+	// Convert back to models.Todo for return
+	return charm.ToModelsTodo(charmTodo), nil
 }
 
 func buildAddTodoResult(todo *models.Todo, tags []string, dueDate *time.Time) (*mcp.CallToolResult, AddTodoOutput, error) {
@@ -297,7 +294,7 @@ func (s *Server) handleListTodos(_ context.Context, req *mcp.CallToolRequest, in
 		return nil, ListTodosOutput{}, err
 	}
 
-	return buildListTodosResult(s.db, todos, input)
+	return s.buildListTodosResult(todos, input)
 }
 
 func (s *Server) resolveOptionalProjectID(projectIDStr *string) (*uuid.UUID, error) {
@@ -314,18 +311,32 @@ func (s *Server) resolveOptionalProjectID(projectIDStr *string) (*uuid.UUID, err
 }
 
 func (s *Server) fetchFilteredTodos(projectID *uuid.UUID, input ListTodosInput) ([]*models.Todo, error) {
-	todos, err := db.ListTodos(s.db, projectID, input.Done, input.Priority, input.Tag)
+	// Build filter
+	filter := &charm.TodoFilter{
+		ProjectID: projectID,
+		Done:      input.Done,
+		Priority:  input.Priority,
+		Tag:       input.Tag,
+	}
+
+	charmTodos, err := s.client.ListTodos(filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
 
-	if input.Overdue != nil && *input.Overdue {
-		todos = filterOverdueTodos(todos)
-	} else if input.Overdue != nil && !*input.Overdue {
-		todos = filterNonOverdueTodos(todos)
+	// Convert to models.Todo
+	modelsTodos := make([]*models.Todo, 0, len(charmTodos))
+	for _, charmTodo := range charmTodos {
+		modelsTodos = append(modelsTodos, charm.ToModelsTodo(charmTodo))
 	}
 
-	return todos, nil
+	if input.Overdue != nil && *input.Overdue {
+		modelsTodos = filterOverdueTodos(modelsTodos)
+	} else if input.Overdue != nil && !*input.Overdue {
+		modelsTodos = filterNonOverdueTodos(modelsTodos)
+	}
+
+	return modelsTodos, nil
 }
 
 func filterOverdueTodos(todos []*models.Todo) []*models.Todo {
@@ -350,18 +361,13 @@ func filterNonOverdueTodos(todos []*models.Todo) []*models.Todo {
 	return filtered
 }
 
-func buildListTodosResult(database *sql.DB, todos []*models.Todo, input ListTodosInput) (*mcp.CallToolResult, ListTodosOutput, error) {
+func (s *Server) buildListTodosResult(todos []*models.Todo, input ListTodosInput) (*mcp.CallToolResult, ListTodosOutput, error) {
 	todoOutputs := make([]TodoOutput, 0, len(todos))
 
 	for _, todo := range todos {
-		tags, err := db.GetTodoTags(database, todo.ID)
+		tags, err := s.client.GetTagsForTodo(todo.ID)
 		if err != nil {
 			return nil, ListTodosOutput{}, fmt.Errorf("failed to get tags for todo %s: %w", todo.ID, err)
-		}
-
-		tagNames := make([]string, len(tags))
-		for i, tag := range tags {
-			tagNames[i] = tag.Name
 		}
 
 		todoOutputs = append(todoOutputs, TodoOutput{
@@ -371,7 +377,7 @@ func buildListTodosResult(database *sql.DB, todos []*models.Todo, input ListTodo
 			Done:        todo.Done,
 			Priority:    todo.Priority,
 			Notes:       todo.Notes,
-			Tags:        tagNames,
+			Tags:        tags,
 			CreatedAt:   todo.CreatedAt,
 			UpdatedAt:   todo.UpdatedAt,
 			DueDate:     todo.DueDate,
@@ -446,17 +452,24 @@ func (s *Server) handleMarkDone(_ context.Context, req *mcp.CallToolRequest, inp
 		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
 	}
 
-	todo, err := db.GetTodoByID(s.db, todoID)
+	// Check if todo exists
+	_, err = s.client.GetTodo(todoID)
 	if err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
 	}
 
-	todo.MarkDone()
-	if err := db.UpdateTodo(s.db, todo); err != nil {
+	if err := s.client.MarkTodoDone(todoID, true); err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)
 	}
 
-	return buildTodoResult(s.db, todo)
+	// Fetch updated todo
+	charmTodo, err := s.client.GetTodo(todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to get updated todo: %w", err)
+	}
+
+	modelsTodo := charm.ToModelsTodo(charmTodo)
+	return s.buildTodoResult(modelsTodo)
 }
 
 // MarkUndoneInput defines the input parameters for the mark_undone tool.
@@ -487,29 +500,31 @@ func (s *Server) handleMarkUndone(_ context.Context, req *mcp.CallToolRequest, i
 		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
 	}
 
-	todo, err := db.GetTodoByID(s.db, todoID)
+	// Check if todo exists
+	_, err = s.client.GetTodo(todoID)
 	if err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
 	}
 
-	todo.MarkUndone()
-	if err := db.UpdateTodo(s.db, todo); err != nil {
+	if err := s.client.MarkTodoDone(todoID, false); err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)
 	}
 
-	return buildTodoResult(s.db, todo)
+	// Fetch updated todo
+	charmTodo, err := s.client.GetTodo(todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to get updated todo: %w", err)
+	}
+
+	modelsTodo := charm.ToModelsTodo(charmTodo)
+	return s.buildTodoResult(modelsTodo)
 }
 
 // buildTodoResult builds a TodoOutput from a todo model.
-func buildTodoResult(database *sql.DB, todo *models.Todo) (*mcp.CallToolResult, TodoOutput, error) {
-	tags, err := db.GetTodoTags(database, todo.ID)
+func (s *Server) buildTodoResult(todo *models.Todo) (*mcp.CallToolResult, TodoOutput, error) {
+	tags, err := s.client.GetTagsForTodo(todo.ID)
 	if err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to get tags: %w", err)
-	}
-
-	tagNames := make([]string, len(tags))
-	for i, tag := range tags {
-		tagNames[i] = tag.Name
 	}
 
 	output := TodoOutput{
@@ -519,7 +534,7 @@ func buildTodoResult(database *sql.DB, todo *models.Todo) (*mcp.CallToolResult, 
 		Done:        todo.Done,
 		Priority:    todo.Priority,
 		Notes:       todo.Notes,
-		Tags:        tagNames,
+		Tags:        tags,
 		CreatedAt:   todo.CreatedAt,
 		UpdatedAt:   todo.UpdatedAt,
 		DueDate:     todo.DueDate,
@@ -571,12 +586,12 @@ func (s *Server) handleDeleteTodo(_ context.Context, req *mcp.CallToolRequest, i
 	}
 
 	// Check if todo exists first
-	_, err = db.GetTodoByID(s.db, todoID)
+	_, err = s.client.GetTodo(todoID)
 	if err != nil {
 		return nil, DeleteTodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
 	}
 
-	if err := db.DeleteTodo(s.db, todoID); err != nil {
+	if err := s.client.DeleteTodo(todoID); err != nil {
 		return nil, DeleteTodoOutput{}, fmt.Errorf("failed to delete todo: %w", err)
 	}
 
@@ -646,7 +661,7 @@ func (s *Server) handleUpdateTodo(_ context.Context, req *mcp.CallToolRequest, i
 		return nil, TodoOutput{}, fmt.Errorf("invalid todo_id: must be a valid UUID. Error: %w", err)
 	}
 
-	todo, err := db.GetTodoByID(s.db, todoID)
+	charmTodo, err := s.client.GetTodo(todoID)
 	if err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
 	}
@@ -667,26 +682,35 @@ func (s *Server) handleUpdateTodo(_ context.Context, req *mcp.CallToolRequest, i
 
 	// Update fields if provided
 	if input.Description != nil {
-		todo.Description = *input.Description
+		charmTodo.Description = *input.Description
 	}
 	if input.Priority != nil {
-		todo.Priority = input.Priority
+		if *input.Priority == "" {
+			charmTodo.Priority = ""
+		} else {
+			charmTodo.Priority = *input.Priority
+		}
 	}
 	if input.Notes != nil {
-		todo.Notes = input.Notes
+		if *input.Notes == "" {
+			charmTodo.Notes = ""
+		} else {
+			charmTodo.Notes = *input.Notes
+		}
 	}
 	if input.DueDate != nil {
-		todo.DueDate = dueDate
+		charmTodo.DueDate = dueDate
 	}
 
 	// Update the timestamp
-	todo.UpdatedAt = time.Now()
+	charmTodo.UpdatedAt = time.Now()
 
-	if err := db.UpdateTodo(s.db, todo); err != nil {
+	if err := s.client.UpdateTodo(charmTodo); err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to update todo: %w", err)
 	}
 
-	return buildTodoResult(s.db, todo)
+	modelsTodo := charm.ToModelsTodo(charmTodo)
+	return s.buildTodoResult(modelsTodo)
 }
 
 // AddTagToTodoInput defines the input parameters for the add_tag_to_todo tool.
@@ -723,16 +747,23 @@ func (s *Server) handleAddTagToTodo(_ context.Context, req *mcp.CallToolRequest,
 	}
 
 	// Check if todo exists
-	todo, err := db.GetTodoByID(s.db, todoID)
+	_, err = s.client.GetTodo(todoID)
 	if err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
 	}
 
-	if err := db.AddTagToTodo(s.db, todoID, input.TagName); err != nil {
+	if err := s.client.AddTagToTodo(todoID, input.TagName); err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to add tag: %w", err)
 	}
 
-	return buildTodoResult(s.db, todo)
+	// Fetch updated todo
+	charmTodo, err := s.client.GetTodo(todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to get updated todo: %w", err)
+	}
+
+	modelsTodo := charm.ToModelsTodo(charmTodo)
+	return s.buildTodoResult(modelsTodo)
 }
 
 // RemoveTagFromTodoInput defines the input parameters for the remove_tag_from_todo tool.
@@ -769,16 +800,23 @@ func (s *Server) handleRemoveTagFromTodo(_ context.Context, req *mcp.CallToolReq
 	}
 
 	// Check if todo exists
-	todo, err := db.GetTodoByID(s.db, todoID)
+	_, err = s.client.GetTodo(todoID)
 	if err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("todo not found: no todo exists with ID '%s'. Use list_todos to see available todos", input.TodoID)
 	}
 
-	if err := db.RemoveTagFromTodo(s.db, todoID, input.TagName); err != nil {
+	if err := s.client.RemoveTagFromTodo(todoID, input.TagName); err != nil {
 		return nil, TodoOutput{}, fmt.Errorf("failed to remove tag: %w", err)
 	}
 
-	return buildTodoResult(s.db, todo)
+	// Fetch updated todo
+	charmTodo, err := s.client.GetTodo(todoID)
+	if err != nil {
+		return nil, TodoOutput{}, fmt.Errorf("failed to get updated todo: %w", err)
+	}
+
+	modelsTodo := charm.ToModelsTodo(charmTodo)
+	return s.buildTodoResult(modelsTodo)
 }
 
 // AddProjectInput defines the input parameters for the add_project tool.
@@ -817,16 +855,23 @@ func (s *Server) registerAddProjectTool() {
 }
 
 func (s *Server) handleAddProject(_ context.Context, req *mcp.CallToolRequest, input AddProjectInput) (*mcp.CallToolResult, ProjectOutput, error) {
-	project := models.NewProject(input.Name, input.Path)
-	if err := db.CreateProject(s.db, project); err != nil {
+	modelsProject := models.NewProject(input.Name, input.Path)
+	charmProject := charm.FromModelsProject(modelsProject)
+
+	if err := s.client.CreateProject(charmProject); err != nil {
 		return nil, ProjectOutput{}, fmt.Errorf("failed to create project: %w", err)
 	}
 
+	var path *string
+	if charmProject.DirectoryPath != "" {
+		path = &charmProject.DirectoryPath
+	}
+
 	output := ProjectOutput{
-		ID:        project.ID.String(),
-		Name:      project.Name,
-		Path:      project.DirectoryPath,
-		CreatedAt: project.CreatedAt,
+		ID:        charmProject.ID.String(),
+		Name:      charmProject.Name,
+		Path:      path,
+		CreatedAt: charmProject.CreatedAt,
 	}
 
 	jsonBytes, err := json.MarshalIndent(output, "", "  ")
@@ -859,18 +904,23 @@ func (s *Server) registerListProjectsTool() {
 }
 
 func (s *Server) handleListProjects(_ context.Context, req *mcp.CallToolRequest, input ListProjectsInput) (*mcp.CallToolResult, ListProjectsOutput, error) {
-	projects, err := db.ListProjects(s.db)
+	charmProjects, err := s.client.ListProjects()
 	if err != nil {
 		return nil, ListProjectsOutput{}, fmt.Errorf("failed to list projects: %w", err)
 	}
 
-	projectOutputs := make([]ProjectOutput, 0, len(projects))
-	for _, project := range projects {
+	projectOutputs := make([]ProjectOutput, 0, len(charmProjects))
+	for _, charmProject := range charmProjects {
+		var path *string
+		if charmProject.DirectoryPath != "" {
+			path = &charmProject.DirectoryPath
+		}
+
 		projectOutputs = append(projectOutputs, ProjectOutput{
-			ID:        project.ID.String(),
-			Name:      project.Name,
-			Path:      project.DirectoryPath,
-			CreatedAt: project.CreatedAt,
+			ID:        charmProject.ID.String(),
+			Name:      charmProject.Name,
+			Path:      path,
+			CreatedAt: charmProject.CreatedAt,
 		})
 	}
 
@@ -925,12 +975,12 @@ func (s *Server) handleDeleteProject(_ context.Context, req *mcp.CallToolRequest
 	}
 
 	// Check if project exists first
-	_, err = db.GetProjectByID(s.db, projectID)
+	_, err = s.client.GetProject(projectID)
 	if err != nil {
 		return nil, DeleteProjectOutput{}, fmt.Errorf("project not found: no project exists with ID '%s'. Use list_projects to see available projects", input.ProjectID)
 	}
 
-	if err := db.DeleteProject(s.db, projectID); err != nil {
+	if err := s.client.DeleteProject(projectID); err != nil {
 		return nil, DeleteProjectOutput{}, fmt.Errorf("failed to delete project: %w", err)
 	}
 
@@ -972,35 +1022,13 @@ func (s *Server) registerSyncStatusTool() {
 }
 
 func (s *Server) handleSyncStatus(ctx context.Context, req *mcp.CallToolRequest, input SyncStatusInput) (*mcp.CallToolResult, SyncStatusOutput, error) {
-	cfg, err := sync.LoadConfig()
-	if err != nil {
-		return nil, SyncStatusOutput{}, fmt.Errorf("failed to load sync config: %w", err)
-	}
+	cfg := s.client.Config()
 
 	output := SyncStatusOutput{
-		Configured: cfg.IsConfigured(),
-		Server:     cfg.Server,
-		LastSync:   "never",
-	}
-
-	// If configured, get pending count and last sync
-	if cfg.IsConfigured() {
-		syncer, err := sync.NewSyncer(cfg, s.db)
-		if err != nil {
-			return nil, SyncStatusOutput{}, fmt.Errorf("failed to create syncer: %w", err)
-		}
-		defer func() { _ = syncer.Close() }()
-
-		pendingCount, err := syncer.PendingCount(ctx)
-		if err != nil {
-			return nil, SyncStatusOutput{}, fmt.Errorf("failed to get pending count: %w", err)
-		}
-		output.PendingCount = pendingCount
-
-		lastSeq, err := syncer.LastSyncedSeq(ctx)
-		if err == nil && lastSeq != "0" {
-			output.LastSync = lastSeq
-		}
+		Configured:   cfg.Server != "",
+		Server:       cfg.Server,
+		PendingCount: 0,
+		LastSync:     "N/A (using Charm KV)",
 	}
 
 	jsonBytes, err := json.MarshalIndent(output, "", "  ")
@@ -1035,50 +1063,21 @@ func (s *Server) registerSyncNowTool() {
 }
 
 func (s *Server) handleSyncNow(ctx context.Context, req *mcp.CallToolRequest, input SyncNowInput) (*mcp.CallToolResult, SyncNowOutput, error) {
-	cfg, err := sync.LoadConfig()
-	if err != nil {
+	cfg := s.client.Config()
+	if cfg.Server == "" {
 		output := SyncNowOutput{
 			Success: false,
-			Error:   fmt.Sprintf("failed to load sync config: %v", err),
+			Error:   "sync not configured - Charm server not set",
 		}
 		return buildSyncNowResult(output)
 	}
 
-	if !cfg.IsConfigured() {
-		output := SyncNowOutput{
-			Success: false,
-			Error:   "sync not configured - run 'toki sync login' first",
-		}
-		return buildSyncNowResult(output)
-	}
-
-	syncer, err := sync.NewSyncer(cfg, s.db)
+	err := s.client.Sync()
 	if err != nil {
 		output := SyncNowOutput{
 			Success: false,
-			Error:   fmt.Sprintf("failed to create syncer: %v", err),
-		}
-		return buildSyncNowResult(output)
-	}
-	defer func() { _ = syncer.Close() }()
-
-	// Track pushed/pulled counts
-	var pushed, pulled int
-	events := &vault.SyncEvents{
-		OnPush: func(pushedCount, remaining int) {
-			pushed += pushedCount
-		},
-		OnPull: func(pulledCount int) {
-			pulled += pulledCount
-		},
-	}
-
-	err = syncer.SyncWithEvents(ctx, events)
-	if err != nil {
-		output := SyncNowOutput{
-			Success: false,
-			Pushed:  pushed,
-			Pulled:  pulled,
+			Pushed:  0,
+			Pulled:  0,
 			Error:   fmt.Sprintf("sync failed: %v", err),
 		}
 		return buildSyncNowResult(output)
@@ -1086,8 +1085,8 @@ func (s *Server) handleSyncNow(ctx context.Context, req *mcp.CallToolRequest, in
 
 	output := SyncNowOutput{
 		Success: true,
-		Pushed:  pushed,
-		Pulled:  pulled,
+		Pushed:  0,
+		Pulled:  0,
 	}
 	return buildSyncNowResult(output)
 }
