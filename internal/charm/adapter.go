@@ -4,23 +4,26 @@
 package charm
 
 import (
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/harper/toki/internal/models"
 )
 
-// Global client for command usage.
-var globalClient *Client
+// Global client for command usage (thread-safe initialization).
+var (
+	globalClient *Client
+	clientOnce   sync.Once
+	clientErr    error
+)
 
-// InitClient initializes the global Charm client.
+// InitClient initializes the global Charm client (thread-safe).
 func InitClient() error {
-	client, err := NewClient("toki")
-	if err != nil {
-		return err
-	}
-	globalClient = client
-	return nil
+	clientOnce.Do(func() {
+		globalClient, clientErr = NewClient("toki")
+	})
+	return clientErr
 }
 
 // CloseClient closes the global client.

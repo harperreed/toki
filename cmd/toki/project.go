@@ -133,11 +133,28 @@ var projectRemoveCmd = &cobra.Command{
 			return fmt.Errorf("project not found: %w", err)
 		}
 
+		// Cascade delete: remove all todos in this project first
+		filter := &charm.TodoFilter{ProjectID: &project.ID}
+		todos, err := charm.GetClient().ListTodos(filter)
+		if err != nil {
+			return fmt.Errorf("failed to list project todos: %w", err)
+		}
+
+		deletedCount := 0
+		for _, todo := range todos {
+			if err := charm.GetClient().DeleteTodo(todo.ID); err != nil {
+				// Log warning but continue - best effort cleanup
+				fmt.Printf("Warning: failed to delete todo %s: %v\n", todo.ID, err)
+			} else {
+				deletedCount++
+			}
+		}
+
 		if err := charm.GetClient().DeleteProject(project.ID); err != nil {
 			return fmt.Errorf("failed to delete project: %w", err)
 		}
 
-		color.Yellow("✓ Removed project '%s' and all its todos", name)
+		color.Yellow("✓ Removed project '%s' and %d todos", name, deletedCount)
 
 		return nil
 	},
