@@ -47,48 +47,14 @@ func TestFullWorkflow(t *testing.T) {
 	t.Logf("Integration test passed!\n%s", output)
 }
 
-func TestSyncInit(t *testing.T) {
-	run, configDir := setupTestBinaryWithDirs(t)
-
-	// Run sync init
-	output, err := run("sync", "init")
-	if err != nil {
-		t.Fatalf("Failed to init sync: %v\n%s", err, output)
-	}
-
-	if !strings.Contains(output, "Sync initialized") {
-		t.Error("Expected success message")
-	}
-
-	if !strings.Contains(output, "Device:") {
-		t.Error("Expected device ID in output")
-	}
-
-	// Verify config file was created (XDG_CONFIG_HOME/toki/sync.json)
-	configPath := filepath.Join(configDir, "toki", "sync.json")
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Error("Config file was not created")
-	}
-
-	// Verify init fails if run again
-	output, err = run("sync", "init")
-	if err == nil {
-		t.Error("Expected error when running init twice")
-	}
-
-	if !strings.Contains(output, "config already exists") {
-		t.Error("Expected 'config already exists' error message")
-	}
-}
-
-func TestSyncStatus_NotConfigured(t *testing.T) {
+func TestSyncStatus(t *testing.T) {
 	run := setupTestBinary(t)
 
 	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
 	configDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configDir)
 
-	// Run sync status without init
+	// Run sync status
 	output, err := run("sync", "status")
 	if err != nil {
 		t.Fatalf("Failed to get sync status: %v\n%s", err, output)
@@ -98,106 +64,13 @@ func TestSyncStatus_NotConfigured(t *testing.T) {
 		t.Error("Expected config path in output")
 	}
 
-	if !strings.Contains(output, "(not set)") {
-		t.Error("Expected '(not set)' for unconfigured values")
-	}
-}
-
-func TestSyncStatus_AfterInit(t *testing.T) {
-	run := setupTestBinary(t)
-
-	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
-	configDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configDir)
-
-	// Init sync first
-	_, err := run("sync", "init")
-	if err != nil {
-		t.Fatalf("Failed to init sync: %v", err)
+	if !strings.Contains(output, "Server:") {
+		t.Error("Expected server in output")
 	}
 
-	// Run sync status
-	output, err := run("sync", "status")
-	if err != nil {
-		t.Fatalf("Failed to get sync status: %v\n%s", err, output)
-	}
-
-	if !strings.Contains(output, "Device ID:") {
-		t.Error("Expected device ID in status")
-	}
-
-	if !strings.Contains(output, "https://api.storeusa.org") {
-		t.Error("Expected default server URL in status")
-	}
-
-	if !strings.Contains(output, "Not logged in") {
-		t.Error("Expected 'Not logged in' status")
-	}
-}
-
-func TestSyncPending_NotConfigured(t *testing.T) {
-	run := setupTestBinary(t)
-
-	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
-	configDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configDir)
-
-	// Run sync pending without init
-	output, err := run("sync", "pending")
-	if err != nil {
-		t.Fatalf("Failed to get pending changes: %v\n%s", err, output)
-	}
-
-	if !strings.Contains(output, "not configured") {
-		t.Error("Expected 'not configured' message")
-	}
-}
-
-func TestSyncPending_AfterInit(t *testing.T) {
-	run := setupTestBinary(t)
-
-	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
-	configDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configDir)
-
-	// Init sync first
-	_, err := run("sync", "init")
-	if err != nil {
-		t.Fatalf("Failed to init sync: %v", err)
-	}
-
-	// Run sync pending (should show not configured since we haven't logged in)
-	output, err := run("sync", "pending")
-	if err != nil {
-		t.Fatalf("Failed to get pending changes: %v\n%s", err, output)
-	}
-
-	if !strings.Contains(output, "not configured") {
-		t.Error("Expected 'not configured' message when not logged in")
-	}
-}
-
-func TestSyncLogout_WhenNotLoggedIn(t *testing.T) {
-	run := setupTestBinary(t)
-
-	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
-	configDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configDir)
-
-	// Init sync first
-	_, err := run("sync", "init")
-	if err != nil {
-		t.Fatalf("Failed to init sync: %v", err)
-	}
-
-	// Run logout when not logged in
-	output, err := run("sync", "logout")
-	if err != nil {
-		t.Fatalf("Failed to logout: %v\n%s", err, output)
-	}
-
-	if !strings.Contains(output, "Not logged in") {
-		t.Error("Expected 'Not logged in' message")
+	// Should show default server
+	if !strings.Contains(output, "charm.2389.dev") {
+		t.Error("Expected default Charm server")
 	}
 }
 
