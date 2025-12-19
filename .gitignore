@@ -32,3 +32,4 @@ coverage.txt
 dist/
 .scratch/
 .worktrees/
+test/toki
