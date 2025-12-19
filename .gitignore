@@ -30,3 +30,4 @@ coverage.txt
 *.db-wal
 # Added by goreleaser init:
 dist/
+.scratch/

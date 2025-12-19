@@ -24,6 +24,7 @@ type Config struct {
 	DerivedKey   string `json:"derived_key"`
 	DeviceID     string `json:"device_id"`
 	VaultDB      string `json:"vault_db"`
+	AutoSync     bool   `json:"auto_sync"`
 }
 
 // ConfigPath returns the path to the sync config file.
@@ -100,8 +101,9 @@ func LoadConfig() (*Config, error) {
 
 func defaultConfig() *Config {
 	return &Config{
-		Server:  "https://api.storeusa.org",
-		VaultDB: filepath.Join(ConfigDir(), "vault.db"),
+		Server:   "https://api.storeusa.org",
+		VaultDB:  filepath.Join(ConfigDir(), "vault.db"),
+		AutoSync: true,
 	}
 }
 
@@ -120,6 +122,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if deviceID := os.Getenv("TOKI_DEVICE_ID"); deviceID != "" {
 		cfg.DeviceID = deviceID
+	}
+	if autoSync := os.Getenv("TOKI_AUTO_SYNC"); autoSync != "" {
+		cfg.AutoSync = autoSync == "1" || autoSync == "true"
 	}
 }
 
@@ -143,20 +148,15 @@ func SaveConfig(cfg *Config) error {
 
 // InitConfig creates a new config with device ID.
 func InitConfig() (*Config, error) {
-	deviceID := ulid.Make().String()
-
-	cfg := &Config{
-		Server:   "https://api.storeusa.org",
-		DeviceID: deviceID,
-		VaultDB:  filepath.Join(ConfigDir(), "vault.db"),
-	}
+	cfg := defaultConfig()
+	cfg.DeviceID = ulid.Make().String()
 
 	if err := SaveConfig(cfg); err != nil {
 		return nil, err
 	}
 
 	fmt.Fprintf(os.Stderr, "Config created at %s\n", ConfigPath())
-	fmt.Fprintf(os.Stderr, "Device ID: %s\n", deviceID)
+	fmt.Fprintf(os.Stderr, "Device ID: %s\n", cfg.DeviceID)
 
 	return cfg, nil
 }

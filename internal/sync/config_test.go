@@ -316,4 +316,37 @@ func TestDefaultConfig(t *testing.T) {
 
 	// VaultDB should be set to default location
 	assert.Contains(t, cfg.VaultDB, "vault.db")
+
+	// AutoSync should be enabled by default
+	assert.True(t, cfg.AutoSync)
+}
+
+func TestApplyEnvOverrides_AutoSyncVariants(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		expected bool
+	}{
+		{"true", "true", true},
+		{"1", "1", true},
+		{"false", "false", false},
+		{"0", "0", false},
+		{"empty", "", true}, // default is true
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", tmpDir)
+			t.Setenv("HOME", tmpDir)
+
+			if tt.envValue != "" {
+				t.Setenv("TOKI_AUTO_SYNC", tt.envValue)
+			}
+
+			cfg, err := LoadConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, cfg.AutoSync)
+		})
+	}
 }
