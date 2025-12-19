@@ -102,13 +102,13 @@ func NewClient(dbName string) (*Client, error) {
 		_ = os.Setenv("CHARM_HOST", cfg.Server)
 	}
 
-	db, err := kv.OpenWithDefaults(dbName)
+	db, err := kv.OpenWithDefaultsFallback(dbName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open kv store: %w", err)
 	}
 
-	// Sync on startup to pull any remote changes
-	if cfg.AutoSync {
+	// Sync on startup to pull any remote changes (skip in read-only mode)
+	if cfg.AutoSync && !db.IsReadOnly() {
 		_ = db.Sync() // Best effort - don't fail startup on sync errors
 	}
 
@@ -128,13 +128,16 @@ func (c *Client) Close() error {
 
 // Sync synchronizes local data with the Charm server.
 func (c *Client) Sync() error {
+	if c.kv.IsReadOnly() {
+		return fmt.Errorf("cannot sync: database is locked by another process (MCP server?)")
+	}
 	return c.kv.Sync()
 }
 
 // syncIfEnabled syncs if auto-sync is enabled in config.
 // Call this after write operations.
 func (c *Client) syncIfEnabled() {
-	if c.config != nil && c.config.AutoSync {
+	if c.config != nil && c.config.AutoSync && !c.kv.IsReadOnly() {
 		_ = c.kv.Sync() // Best effort, don't fail writes on sync errors
 	}
 }
@@ -147,6 +150,12 @@ func (c *Client) KV() *kv.KV {
 // Config returns the current configuration.
 func (c *Client) Config() *Config {
 	return c.config
+}
+
+// IsReadOnly returns true if the database is open in read-only mode.
+// This happens when another process (like an MCP server) holds the lock.
+func (c *Client) IsReadOnly() bool {
+	return c.kv.IsReadOnly()
 }
 
 // ID returns the Charm user ID for the current account.

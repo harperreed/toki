@@ -14,6 +14,10 @@ import (
 
 // CreateProject stores a new project in the KV store.
 func (c *Client) CreateProject(project *Project) error {
+	if c.IsReadOnly() {
+		return fmt.Errorf("cannot write: database is locked by another process (MCP server?)")
+	}
+
 	data, err := json.Marshal(project)
 	if err != nil {
 		return fmt.Errorf("failed to marshal project: %w", err)
@@ -117,6 +121,10 @@ func (c *Client) UpdateProject(project *Project) error {
 
 // DeleteProject removes a project by ID.
 func (c *Client) DeleteProject(id uuid.UUID) error {
+	if c.IsReadOnly() {
+		return fmt.Errorf("cannot write: database is locked by another process (MCP server?)")
+	}
+
 	key := ProjectKey(id)
 	if err := c.kv.Delete([]byte(key)); err != nil {
 		return fmt.Errorf("failed to delete project: %w", err)

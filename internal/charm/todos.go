@@ -24,6 +24,10 @@ type TodoFilter struct {
 
 // CreateTodo stores a new todo in the KV store.
 func (c *Client) CreateTodo(todo *Todo) error {
+	if c.IsReadOnly() {
+		return fmt.Errorf("cannot write: database is locked by another process (MCP server?)")
+	}
+
 	if todo.Tags == nil {
 		todo.Tags = []string{}
 	}
@@ -191,6 +195,10 @@ func (c *Client) UpdateTodo(todo *Todo) error {
 
 // DeleteTodo removes a todo by ID.
 func (c *Client) DeleteTodo(id uuid.UUID) error {
+	if c.IsReadOnly() {
+		return fmt.Errorf("cannot write: database is locked by another process (MCP server?)")
+	}
+
 	key := TodoKey(id)
 	if err := c.kv.Delete([]byte(key)); err != nil {
 		return fmt.Errorf("failed to delete todo: %w", err)

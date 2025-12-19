@@ -13,6 +13,10 @@ import (
 
 // CreateTag stores a new tag in the KV store.
 func (c *Client) CreateTag(tag *Tag) error {
+	if c.IsReadOnly() {
+		return fmt.Errorf("cannot write: database is locked by another process (MCP server?)")
+	}
+
 	data, err := json.Marshal(tag)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tag: %w", err)
@@ -98,6 +102,10 @@ func (c *Client) ListTags() ([]*Tag, error) {
 
 // DeleteTag removes a tag by name.
 func (c *Client) DeleteTag(name string) error {
+	if c.IsReadOnly() {
+		return fmt.Errorf("cannot write: database is locked by another process (MCP server?)")
+	}
+
 	key := TagKey(name)
 	if err := c.kv.Delete([]byte(key)); err != nil {
 		return fmt.Errorf("failed to delete tag: %w", err)
