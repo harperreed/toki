@@ -4,12 +4,18 @@
 package charm
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 )
 
 func TestNewClient(t *testing.T) {
+	// Skip in CI - charm cloud connectivity required
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		t.Skip("skipping charm test in CI - no charm cloud connectivity")
+	}
+
 	// Use temp directory for test data (automatically cleaned up)
 	tmpDir := t.TempDir()
 
@@ -62,6 +68,11 @@ func TestConfigPath(t *testing.T) {
 }
 
 func TestWALConcurrentConnections(t *testing.T) {
+	// Skip in CI - charm cloud connectivity required
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		t.Skip("skipping charm test in CI - no charm cloud connectivity")
+	}
+
 	// Test that multiple clients can open the same database concurrently.
 	// This verifies the WAL mode fix prevents SQLITE_BUSY errors.
 	tmpDir := t.TempDir()
@@ -69,7 +80,6 @@ func TestWALConcurrentConnections(t *testing.T) {
 
 	// First, initialize the database and Charm keys with a single client.
 	// This avoids race conditions on key generation.
-	// This may fail in CI if charm cloud isn't available.
 	initClient, err := NewClient("toki-wal-test")
 	if err != nil {
 		t.Skipf("skipping WAL test - charm KV not available: %v", err)

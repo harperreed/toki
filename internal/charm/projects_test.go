@@ -5,6 +5,7 @@ package charm
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -13,6 +14,12 @@ import (
 
 func setupTestClient(t *testing.T) (*Client, func()) {
 	t.Helper()
+
+	// Skip charm-dependent tests in CI environments where charm cloud isn't available.
+	// These tests require charm cloud connectivity which hangs in CI.
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		t.Skip("skipping charm test in CI - no charm cloud connectivity")
+	}
 
 	tmpDir := t.TempDir() // automatically cleaned up
 
