@@ -21,7 +21,7 @@ func setupTestClient(t *testing.T) (*Client, func()) {
 
 	client, err := NewClient("toki-test-" + uuid.New().String()[:8])
 	if err != nil {
-		t.Fatalf("failed to create client: %v", err)
+		t.Skipf("skipping test - charm KV not available: %v", err)
 	}
 
 	cleanup := func() {
