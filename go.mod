@@ -3,7 +3,7 @@ module github.com/harper/toki
 go 1.24.9
 
 // Use 2389-research fork of charm for self-hosted backend with SQLite KV
-replace github.com/charmbracelet/charm => github.com/2389-research/charm v0.15.2
+replace github.com/charmbracelet/charm => github.com/2389-research/charm v0.15.3
 
 require (
 	github.com/charmbracelet/charm v0.0.0-00010101000000-000000000000
