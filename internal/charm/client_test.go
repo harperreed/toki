@@ -5,6 +5,7 @@ package charm
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -57,5 +58,64 @@ func TestConfigPath(t *testing.T) {
 	expected := filepath.Join(tmpDir, "toki", "charm.json")
 	if path != expected {
 		t.Errorf("ConfigPath() = %s, want %s", path, expected)
+	}
+}
+
+func TestWALConcurrentConnections(t *testing.T) {
+	// Test that multiple clients can open the same database concurrently.
+	// This verifies the WAL mode fix prevents SQLITE_BUSY errors.
+	tmpDir := t.TempDir()
+	t.Setenv("CHARM_DATA_DIR", tmpDir)
+
+	// First, initialize the database and Charm keys with a single client.
+	// This avoids race conditions on key generation.
+	initClient, err := NewClient("toki-wal-test")
+	if err != nil {
+		t.Fatalf("failed to initialize: %v", err)
+	}
+	_ = initClient.Close()
+
+	const numClients = 3
+	const writesPerClient = 5
+
+	var wg sync.WaitGroup
+	errors := make(chan error, numClients*writesPerClient)
+
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// Each goroutine opens its own client (simulates separate processes)
+			client, err := NewClient("toki-wal-test")
+			if err != nil {
+				errors <- err
+				return
+			}
+			defer func() { _ = client.Close() }()
+
+			// Perform writes
+			for j := 0; j < writesPerClient; j++ {
+				project := &Project{
+					Name: "test-project",
+				}
+				if err := client.CreateProject(project); err != nil {
+					errors <- err
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Collect any errors
+	errs := make([]error, 0, numClients*writesPerClient)
+	for err := range errors {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		t.Errorf("concurrent connections produced %d errors, first: %v", len(errs), errs[0])
 	}
 }

@@ -1,5 +1,5 @@
-github.com/2389-research/charm v0.0.0-20251220172505-c2ebc1f30d74 h1:EzCavZ9y2iFv82sBECBLBqu0+dng8vrHh6DSV2b24nY=
-github.com/2389-research/charm v0.0.0-20251220172505-c2ebc1f30d74/go.mod h1:hXtIW7xMslPJ4WBrdNyG6E4JZKFIEfgvGv8OvOKbrgc=
+github.com/2389-research/charm v0.15.1 h1:vGPB2d9iB1RFjDVN8q+YNZDbyhA55FYbtifzLGnuQNo=
+github.com/2389-research/charm v0.15.1/go.mod h1:hXtIW7xMslPJ4WBrdNyG6E4JZKFIEfgvGv8OvOKbrgc=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be h1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuWl6zY27l47sB3qLNK6tF2fkHG55UZxx8oIVo4=
 github.com/auth0/go-jwt-middleware/v2 v2.2.1 h1:pqxEIwlCztD0T9ZygGfOrw4NK/F9iotnCnPJVADKbkE=
