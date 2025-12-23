@@ -1,5 +1,5 @@
 // ABOUTME: Sync subcommand for Charm backend integration
-// ABOUTME: Provides status, now, link, unlink, and wipe commands for Charm Cloud sync
+// ABOUTME: Provides status, now, link, unlink, repair, reset, and wipe commands for Charm Cloud sync
 
 package main
 
@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/charm/kv"
 	"github.com/fatih/color"
 	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
@@ -27,12 +28,15 @@ Commands:
   now     - Trigger immediate sync
   link    - Link this device to your Charm account
   unlink  - Unlink this device from Charm account
-  wipe    - Clear all local/remote data
+  repair  - Repair a corrupted local database
+  reset   - Delete local database and re-download from cloud
+  wipe    - Permanently delete ALL data (local and cloud)
 
 Examples:
   toki sync status
   toki sync now
-  toki sync link`,
+  toki sync link
+  toki sync repair --force`,
 }
 
 var syncStatusCmd = &cobra.Command{
@@ -168,59 +172,141 @@ Normally sync happens automatically, but use this to force a refresh.`,
 	},
 }
 
-var syncWipeCmd = &cobra.Command{
-	Use:   "wipe",
-	Short: "Clear all local/remote data",
-	Long: `Clear all sync data both locally and on Charm Cloud.
+var syncRepairCmd = &cobra.Command{
+	Use:   "repair",
+	Short: "Repair a corrupted local database",
+	Long: `Repair a corrupted local database using SQLite recovery tools.
 
-This is a destructive operation that:
-- Deletes all local Charm KV data
-- Clears all remote data on Charm Cloud
-- Preserves your device link and SSH keys
+This command will:
+- Checkpoint the WAL (Write-Ahead Log)
+- Remove shared memory files
+- Run integrity checks
+- Vacuum the database
+- Attempt REINDEX recovery if --force is specified
 
-After wipe, your todos will be gone. Use with caution!`,
+Use this if you encounter database corruption errors.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("⚠️  WARNING: This will DELETE all toki data!")
-		fmt.Println("This affects:")
-		fmt.Println("  - All local todos, projects, and tags")
-		fmt.Println("  - All synced data on Charm Cloud")
-		fmt.Println("\nThis action CANNOT be undone!")
-		fmt.Print("\nType 'wipe' to confirm: ")
+		force, _ := cmd.Flags().GetBool("force")
 
-		reader := bufio.NewReader(os.Stdin)
-		confirmation, _ := reader.ReadString('\n')
-		confirmation = strings.TrimSpace(confirmation)
+		fmt.Println("Repairing database...")
+		result, err := kv.Repair("toki", force)
 
-		if confirmation != "wipe" {
-			fmt.Println("Aborted.")
+		if result.WalCheckpointed {
+			fmt.Println("  ✓ WAL checkpointed")
+		}
+		if result.ShmRemoved {
+			fmt.Println("  ✓ SHM file removed")
+		}
+		if result.IntegrityOK {
+			fmt.Println("  ✓ Integrity check passed")
+		} else {
+			fmt.Println("  ✗ Integrity check failed")
+		}
+		if result.Vacuumed {
+			fmt.Println("  ✓ Database vacuumed")
+		}
+
+		if err != nil {
+			if !force {
+				fmt.Println("\nRun with --force to attempt recovery.")
+			}
+			return err
+		}
+		fmt.Println("\nRepair complete.")
+		return nil
+	},
+}
+
+var syncResetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Delete local database and re-download from cloud",
+	Long: `Delete your local database and re-download from Charm Cloud.
+
+This is useful if your local database is corrupted or out of sync.
+Your cloud data will be preserved and re-synced to a fresh local database.
+
+WARNING: Any unsynced local changes will be lost!`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println("This will delete your local database and re-download from Charm Cloud.")
+		fmt.Println("Any unsynced local data will be lost.")
+		fmt.Print("\nContinue? [y/N] ")
+
+		var confirm string
+		if _, err := fmt.Scanln(&confirm); err != nil {
+			fmt.Println("Cancelled.")
+			return nil
+		}
+		if confirm != "y" && confirm != "Y" {
+			fmt.Println("Cancelled.")
 			return nil
 		}
 
-		client := charm.GetClient()
-		if client == nil {
-			return fmt.Errorf("client not initialized")
+		fmt.Println("\nResetting database...")
+		if err := kv.Reset("toki"); err != nil {
+			return fmt.Errorf("reset failed: %w", err)
 		}
 
-		fmt.Println("\nClearing local data...")
+		fmt.Println("  ✓ Local database deleted")
+		fmt.Println("  ✓ Synced from cloud")
+		fmt.Println("\nReset complete.")
+		return nil
+	},
+}
 
-		// Reset the KV store (deletes local and pulls fresh from cloud, which is empty after reset)
-		if err := client.KV().Reset(); err != nil {
-			return fmt.Errorf("failed to reset KV store: %w", err)
+var syncWipeCmd = &cobra.Command{
+	Use:   "wipe",
+	Short: "Permanently delete ALL data (local and cloud)",
+	Long: `Permanently delete ALL toki data from both local storage and Charm Cloud.
+
+WARNING: This is a DESTRUCTIVE operation that:
+- Deletes all local database files
+- Deletes all cloud backups
+- Cannot be undone
+
+Your device link and SSH keys will be preserved, but all todos,
+projects, and tags will be permanently deleted.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println("WARNING: This will permanently delete ALL data!")
+		fmt.Println("This includes local AND cloud data. This cannot be undone.")
+		fmt.Print("\nType 'wipe' to confirm: ")
+
+		var confirm string
+		if _, err := fmt.Scanln(&confirm); err != nil {
+			fmt.Println("Cancelled.")
+			return nil
+		}
+		if confirm != "wipe" {
+			fmt.Println("Cancelled.")
+			return nil
 		}
 
-		color.Green("✓ All data wiped")
-		fmt.Println("\nYour Charm account is still linked.")
-		fmt.Println("You can start adding todos again.")
+		fmt.Println("\nWiping database...")
+		result, err := kv.Wipe("toki")
+		if err != nil {
+			return fmt.Errorf("wipe failed: %w", err)
+		}
 
+		if result.CloudBackupsDeleted > 0 {
+			fmt.Printf("  ✓ %d cloud backups deleted\n", result.CloudBackupsDeleted)
+		}
+		if result.LocalFilesDeleted > 0 {
+			fmt.Printf("  ✓ %d local files deleted\n", result.LocalFilesDeleted)
+		}
+
+		fmt.Println("\nWipe complete.")
 		return nil
 	},
 }
 
 func init() {
+	syncRepairCmd.Flags().Bool("force", false, "Attempt REINDEX recovery if corruption detected")
+
 	syncCmd.AddCommand(syncStatusCmd)
 	syncCmd.AddCommand(syncNowCmd)
 	syncCmd.AddCommand(syncLinkCmd)
 	syncCmd.AddCommand(syncUnlinkCmd)
+	syncCmd.AddCommand(syncRepairCmd)
+	syncCmd.AddCommand(syncResetCmd)
 	syncCmd.AddCommand(syncWipeCmd)
 
 	rootCmd.AddCommand(syncCmd)
