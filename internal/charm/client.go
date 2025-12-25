@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/charm/client"
 	"github.com/charmbracelet/charm/kv"
@@ -15,15 +16,17 @@ import (
 
 // Config holds Charm client configuration.
 type Config struct {
-	Server   string `json:"server"`
-	AutoSync bool   `json:"auto_sync"`
+	Server         string        `json:"server"`
+	AutoSync       bool          `json:"auto_sync"`
+	StaleThreshold time.Duration `json:"stale_threshold,omitempty"`
 }
 
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		Server:   "charm.2389.dev",
-		AutoSync: true,
+		Server:         "charm.2389.dev",
+		AutoSync:       true,
+		StaleThreshold: 5 * time.Minute, // Default: sync if data is older than 5 minutes
 	}
 }
 
@@ -132,6 +135,27 @@ func (c *Client) Sync() error {
 		return fmt.Errorf("cannot sync: database is locked by another process (MCP server?)")
 	}
 	return c.kv.Sync()
+}
+
+// LastSyncTime returns the last sync timestamp from the KV database.
+func (c *Client) LastSyncTime() time.Time {
+	return c.kv.LastSyncTime()
+}
+
+// IsStale checks if the local data is stale based on the configured threshold.
+func (c *Client) IsStale() bool {
+	return c.kv.IsStale(c.config.StaleThreshold)
+}
+
+// SyncIfStale syncs with the server if local data is stale.
+func (c *Client) SyncIfStale() error {
+	if c.kv.IsReadOnly() {
+		return nil // Skip sync if read-only
+	}
+	if c.kv.IsStale(c.config.StaleThreshold) {
+		return c.kv.Sync()
+	}
+	return nil
 }
 
 // syncIfEnabled syncs if auto-sync is enabled in config.

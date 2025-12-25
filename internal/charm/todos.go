@@ -48,6 +48,10 @@ func (c *Client) CreateTodo(todo *Todo) error {
 
 // GetTodo retrieves a todo by ID.
 func (c *Client) GetTodo(id uuid.UUID) (*Todo, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	key := TodoKey(id)
 	data, err := c.kv.Get([]byte(key))
 	if err != nil {
@@ -64,6 +68,10 @@ func (c *Client) GetTodo(id uuid.UUID) (*Todo, error) {
 
 // GetTodoByPrefix retrieves a todo by ID prefix.
 func (c *Client) GetTodoByPrefix(prefix string) (*Todo, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	keys, err := c.kv.Keys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list keys: %w", err)
@@ -150,6 +158,10 @@ func matchesFilter(todo *Todo, filter *TodoFilter, now time.Time) bool {
 
 // ListTodos returns todos matching the given filter.
 func (c *Client) ListTodos(filter *TodoFilter) ([]*Todo, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	keys, err := c.kv.Keys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list keys: %w", err)

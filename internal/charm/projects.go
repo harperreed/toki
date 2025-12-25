@@ -34,6 +34,10 @@ func (c *Client) CreateProject(project *Project) error {
 
 // GetProject retrieves a project by ID.
 func (c *Client) GetProject(id uuid.UUID) (*Project, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	key := ProjectKey(id)
 	data, err := c.kv.Get([]byte(key))
 	if err != nil {
@@ -82,6 +86,10 @@ func (c *Client) GetProjectByPath(path string) (*Project, error) {
 
 // ListProjects returns all projects, sorted by name.
 func (c *Client) ListProjects() ([]*Project, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	keys, err := c.kv.Keys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list keys: %w", err)

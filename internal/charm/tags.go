@@ -33,6 +33,10 @@ func (c *Client) CreateTag(tag *Tag) error {
 
 // GetTag retrieves a tag by name.
 func (c *Client) GetTag(name string) (*Tag, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	key := TagKey(name)
 	data, err := c.kv.Get([]byte(key))
 	if err != nil {
@@ -68,6 +72,10 @@ func (c *Client) GetOrCreateTag(name string) (*Tag, error) {
 
 // ListTags returns all tags, sorted by name.
 func (c *Client) ListTags() ([]*Tag, error) {
+	if err := c.SyncIfStale(); err != nil {
+		return nil, fmt.Errorf("failed to sync: %w", err)
+	}
+
 	keys, err := c.kv.Keys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list keys: %w", err)
