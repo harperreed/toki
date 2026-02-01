@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"embed"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,7 +122,7 @@ func installSkillWithOptions(opts installSkillOptions) error {
 			reader = bufio.NewReader(os.Stdin)
 		}
 		response, err := reader.ReadString('\n')
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return fmt.Errorf("failed to read response: %w", err)
 		}
 		response = strings.TrimSpace(strings.ToLower(response))

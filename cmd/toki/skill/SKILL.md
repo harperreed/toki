@@ -59,7 +59,7 @@ mcp__toki__add_todo(description="Submit report", due_date="2026-02-15T17:00:00Z"
 ## CLI commands (if MCP unavailable)
 
 ```bash
-toki add "Task description" --priority high --tag urgent
+toki add "Task description" --priority high --tags urgent
 toki list                    # All pending
 toki list --done            # Completed
 toki list --project myproj  # By project

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -424,7 +425,7 @@ func TestDefaultInstallOptions(t *testing.T) {
 func TestSkillInstallationErrors(t *testing.T) {
 	t.Run("handles read-only directory gracefully", func(t *testing.T) {
 		// Skip on Windows where permissions work differently
-		if os.Getenv("GOOS") == "windows" {
+		if runtime.GOOS == "windows" {
 			t.Skip("skipping permission test on Windows")
 		}
 
