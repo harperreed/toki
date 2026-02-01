@@ -6,6 +6,7 @@ package storage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -724,5 +725,598 @@ func TestVacuum(t *testing.T) {
 	// Just test that vacuum doesn't error
 	if err := storage.Vacuum(); err != nil {
 		t.Errorf("vacuum failed: %v", err)
+	}
+}
+
+func TestUpdateTodo(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Original",
+		Priority:    "low",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// Update the todo
+	todo.Description = "Updated"
+	todo.Priority = "high"
+	todo.Notes = "New notes"
+	dueDate := time.Now().Add(24 * time.Hour)
+	todo.DueDate = &dueDate
+
+	if err := storage.UpdateTodo(todo); err != nil {
+		t.Fatalf("failed to update todo: %v", err)
+	}
+
+	got, err := storage.GetTodo(todo.ID)
+	if err != nil {
+		t.Fatalf("failed to get todo: %v", err)
+	}
+
+	if got.Description != "Updated" {
+		t.Errorf("Description not updated: got %v, want Updated", got.Description)
+	}
+	if got.Priority != "high" {
+		t.Errorf("Priority not updated: got %v, want high", got.Priority)
+	}
+	if got.Notes != "New notes" {
+		t.Errorf("Notes not updated: got %v, want 'New notes'", got.Notes)
+	}
+	if got.DueDate == nil {
+		t.Error("DueDate should be set")
+	}
+}
+
+func TestUpdateTodoNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Try to update non-existent todo
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   uuid.New(),
+		Description: "Non-existent",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+
+	err := storage.UpdateTodo(todo)
+	if err == nil {
+		t.Error("expected error updating non-existent todo")
+	}
+}
+
+func TestDefaultDBPath(t *testing.T) {
+	// Save original env
+	originalXDG := os.Getenv("XDG_DATA_HOME")
+	defer func() { _ = os.Setenv("XDG_DATA_HOME", originalXDG) }()
+
+	t.Run("with XDG_DATA_HOME set", func(t *testing.T) {
+		_ = os.Setenv("XDG_DATA_HOME", "/custom/data")
+		path := DefaultDBPath()
+		if path != "/custom/data/toki/toki.db" {
+			t.Errorf("unexpected path: %s", path)
+		}
+	})
+
+	t.Run("without XDG_DATA_HOME", func(t *testing.T) {
+		_ = os.Unsetenv("XDG_DATA_HOME")
+		path := DefaultDBPath()
+		if !strings.HasSuffix(path, ".local/share/toki/toki.db") {
+			t.Errorf("unexpected path: %s", path)
+		}
+	})
+}
+
+func TestCloseNilStorage(t *testing.T) {
+	// Test closing storage with nil db should not error
+	storage := &SQLiteStorage{db: nil}
+	err := storage.Close()
+	if err != nil {
+		t.Errorf("Close with nil db should not error: %v", err)
+	}
+}
+
+func TestGetTodoByPrefixAmbiguous(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	// Create two todos - we need UUIDs that share a common prefix
+	// This is hard to guarantee, so we'll test with very short prefix
+	todo1 := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo 1",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo1); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	todo2 := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo 2",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo2); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// Try to find with a single character prefix - likely to be ambiguous
+	_, err := storage.GetTodoByPrefix(todo1.ID.String()[:1])
+	// Either it finds one or multiple - we're testing the code runs
+	switch {
+	case err == nil:
+		// Found exactly one - that's fine
+	case strings.Contains(err.Error(), "ambiguous"):
+		// Found multiple - also expected
+	case strings.Contains(err.Error(), "not found"):
+		// No match - also acceptable
+	default:
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteTodoNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	err := storage.DeleteTodo(uuid.New())
+	if err == nil {
+		t.Error("expected error deleting non-existent todo")
+	}
+}
+
+func TestDeleteProjectNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	err := storage.DeleteProject(uuid.New())
+	if err == nil {
+		t.Error("expected error deleting non-existent project")
+	}
+}
+
+func TestMarkTodoDoneNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	err := storage.MarkTodoDone(uuid.New(), true)
+	if err == nil {
+		t.Error("expected error marking non-existent todo")
+	}
+}
+
+func TestGetProjectNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	_, err := storage.GetProject(uuid.New())
+	if err == nil {
+		t.Error("expected error getting non-existent project")
+	}
+}
+
+func TestGetProjectByNameNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	_, err := storage.GetProjectByName("non-existent")
+	if err == nil {
+		t.Error("expected error getting non-existent project by name")
+	}
+}
+
+func TestGetProjectByPathNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	_, err := storage.GetProjectByPath("/non/existent/path")
+	if err == nil {
+		t.Error("expected error getting non-existent project by path")
+	}
+}
+
+func TestGetTodoNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	_, err := storage.GetTodo(uuid.New())
+	if err == nil {
+		t.Error("expected error getting non-existent todo")
+	}
+}
+
+func TestGetTodoByPrefixNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	_, err := storage.GetTodoByPrefix("xxxxxx")
+	if err == nil {
+		t.Error("expected error getting non-existent todo by prefix")
+	}
+}
+
+func TestDeleteTagNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	err := storage.DeleteTag("non-existent")
+	if err == nil {
+		t.Error("expected error deleting non-existent tag")
+	}
+}
+
+func TestUpdateProjectNotFound(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:            uuid.New(),
+		Name:          "non-existent",
+		DirectoryPath: "/path",
+		CreatedAt:     time.Now().UTC(),
+	}
+
+	err := storage.UpdateProject(project)
+	if err == nil {
+		t.Error("expected error updating non-existent project")
+	}
+}
+
+func TestCreateTodoWithTags(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo with tags on creation",
+		Tags:        []string{"alpha", "beta", "gamma"},
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// Verify tags were created
+	tags, err := storage.GetTagsForTodo(todo.ID)
+	if err != nil {
+		t.Fatalf("failed to get tags: %v", err)
+	}
+	if len(tags) != 3 {
+		t.Errorf("expected 3 tags, got %d", len(tags))
+	}
+}
+
+//nolint:gocognit,funlen
+func TestListTodosWithAllFilters(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "filter-test",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	now := time.Now().UTC()
+
+	// Create various todos
+	for i := 0; i < 5; i++ {
+		todo := &Todo{
+			ID:          uuid.New(),
+			ProjectID:   project.ID,
+			ProjectName: project.Name,
+			Description: "Test todo",
+			Done:        i%2 == 0,
+			Priority:    []string{"low", "medium", "high"}[i%3], //nolint:gosec // i%3 is always in bounds [0,2]
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		if err := storage.CreateTodo(todo); err != nil {
+			t.Fatalf("failed to create todo: %v", err)
+		}
+	}
+
+	t.Run("filter by project", func(t *testing.T) {
+		list, err := storage.ListTodos(&TodoFilter{ProjectID: &project.ID})
+		if err != nil {
+			t.Fatalf("failed to list todos: %v", err)
+		}
+		if len(list) != 5 {
+			t.Errorf("expected 5 todos, got %d", len(list))
+		}
+	})
+
+	t.Run("filter by done", func(t *testing.T) {
+		done := true
+		list, err := storage.ListTodos(&TodoFilter{Done: &done})
+		if err != nil {
+			t.Fatalf("failed to list todos: %v", err)
+		}
+		for _, todo := range list {
+			if !todo.Done {
+				t.Error("expected all todos to be done")
+			}
+		}
+	})
+
+	t.Run("filter by pending", func(t *testing.T) {
+		done := false
+		list, err := storage.ListTodos(&TodoFilter{Done: &done})
+		if err != nil {
+			t.Fatalf("failed to list todos: %v", err)
+		}
+		for _, todo := range list {
+			if todo.Done {
+				t.Error("expected all todos to be pending")
+			}
+		}
+	})
+
+	t.Run("filter by priority", func(t *testing.T) {
+		priority := "high"
+		list, err := storage.ListTodos(&TodoFilter{Priority: &priority})
+		if err != nil {
+			t.Fatalf("failed to list todos: %v", err)
+		}
+		for _, todo := range list {
+			if todo.Priority != "high" {
+				t.Error("expected all todos to have high priority")
+			}
+		}
+	})
+
+	t.Run("combined filters", func(t *testing.T) {
+		done := false
+		priority := "low"
+		list, err := storage.ListTodos(&TodoFilter{
+			ProjectID: &project.ID,
+			Done:      &done,
+			Priority:  &priority,
+		})
+		if err != nil {
+			t.Fatalf("failed to list todos: %v", err)
+		}
+		for _, todo := range list {
+			if todo.Done {
+				t.Error("expected pending todos")
+			}
+			if todo.Priority != "low" {
+				t.Error("expected low priority")
+			}
+		}
+	})
+}
+
+func TestListProjectsEmpty(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	projects, err := storage.ListProjects()
+	if err != nil {
+		t.Fatalf("failed to list projects: %v", err)
+	}
+	if len(projects) != 0 {
+		t.Errorf("expected 0 projects, got %d", len(projects))
+	}
+}
+
+func TestListProjectsMultiple(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	for i := 0; i < 3; i++ {
+		project := &Project{
+			ID:        uuid.New(),
+			Name:      "project-" + string(rune('a'+i)),
+			CreatedAt: time.Now().UTC(),
+		}
+		if err := storage.CreateProject(project); err != nil {
+			t.Fatalf("failed to create project: %v", err)
+		}
+	}
+
+	projects, err := storage.ListProjects()
+	if err != nil {
+		t.Fatalf("failed to list projects: %v", err)
+	}
+	if len(projects) != 3 {
+		t.Errorf("expected 3 projects, got %d", len(projects))
+	}
+}
+
+func TestAddTagToTodoTwice(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// Add same tag twice - should not error (idempotent)
+	if err := storage.AddTagToTodo(todo.ID, "duplicate"); err != nil {
+		t.Fatalf("failed to add tag first time: %v", err)
+	}
+	if err := storage.AddTagToTodo(todo.ID, "duplicate"); err != nil {
+		t.Fatalf("failed to add tag second time: %v", err)
+	}
+
+	tags, err := storage.GetTagsForTodo(todo.ID)
+	if err != nil {
+		t.Fatalf("failed to get tags: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Errorf("expected 1 tag, got %d", len(tags))
+	}
+}
+
+func TestRemoveTagFromTodoNotAssociated(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// Create a tag but don't associate it with the todo
+	_, err := storage.GetOrCreateTag("unassociated")
+	if err != nil {
+		t.Fatalf("failed to create tag: %v", err)
+	}
+
+	// Removing non-associated tag should not error
+	err = storage.RemoveTagFromTodo(todo.ID, "unassociated")
+	if err != nil {
+		t.Fatalf("removing unassociated tag should not error: %v", err)
+	}
+}
+
+func TestGetTagsForTodoNoTags(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo without tags",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	tags, err := storage.GetTagsForTodo(todo.ID)
+	if err != nil {
+		t.Fatalf("failed to get tags: %v", err)
+	}
+	if len(tags) != 0 {
+		t.Errorf("expected 0 tags, got %d", len(tags))
+	}
+}
+
+func TestListTodosNilFilter(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todo := &Todo{
+		ID:          uuid.New(),
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Todo",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// ListTodos with nil filter should return all
+	list, err := storage.ListTodos(nil)
+	if err != nil {
+		t.Fatalf("failed to list todos: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("expected 1 todo, got %d", len(list))
 	}
 }

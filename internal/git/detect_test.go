@@ -85,3 +85,100 @@ func TestNormalizePath(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizePathRealDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	result, err := NormalizePath(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to normalize temp dir: %v", err)
+	}
+
+	// Should return the resolved absolute path
+	if !filepath.IsAbs(result) {
+		t.Error("Expected absolute path")
+	}
+}
+
+func TestNormalizePathSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a real directory
+	realDir := filepath.Join(tmpDir, "real")
+	if err := os.MkdirAll(realDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a symlink to it
+	linkDir := filepath.Join(tmpDir, "link")
+	if err := os.Symlink(realDir, linkDir); err != nil {
+		t.Skip("Symlinks not supported on this system")
+	}
+
+	result, err := NormalizePath(linkDir)
+	if err != nil {
+		t.Fatalf("Failed to normalize symlink: %v", err)
+	}
+
+	// Should resolve symlink to real directory
+	// Also resolve the expected path to handle system symlinks (e.g., /var -> /private/var on macOS)
+	expectedResolved, _ := filepath.EvalSymlinks(realDir)
+	if result != expectedResolved {
+		t.Errorf("Expected resolved path %s, got %s", expectedResolved, result)
+	}
+}
+
+func TestNormalizePathNonexistent(t *testing.T) {
+	// Non-existent path should still return absolute path
+	// (symlink resolution will fail gracefully)
+	result, err := NormalizePath("/nonexistent/path/that/does/not/exist")
+	if err != nil {
+		t.Fatalf("Failed to normalize nonexistent path: %v", err)
+	}
+
+	if !filepath.IsAbs(result) {
+		t.Error("Expected absolute path for nonexistent path")
+	}
+}
+
+func TestFindGitRootFromRepoRoot(t *testing.T) {
+	repoDir := setupGitRepo(t)
+
+	// Test from the repo root itself
+	root, err := FindGitRoot(repoDir)
+	if err != nil {
+		t.Fatalf("Failed to find git root: %v", err)
+	}
+
+	absRepo, _ := filepath.EvalSymlinks(repoDir)
+	absRoot, _ := filepath.EvalSymlinks(root)
+
+	if absRoot != absRepo {
+		t.Errorf("Expected git root %s, got %s", absRepo, absRoot)
+	}
+}
+
+func TestFindGitRootWithSymlink(t *testing.T) {
+	repoDir := setupGitRepo(t)
+	tmpDir := t.TempDir()
+
+	// Create a symlink to the repo
+	linkPath := filepath.Join(tmpDir, "repo-link")
+	if err := os.Symlink(repoDir, linkPath); err != nil {
+		t.Skip("Symlinks not supported on this system")
+	}
+
+	// Find git root from the symlink
+	root, err := FindGitRoot(linkPath)
+	if err != nil {
+		t.Fatalf("Failed to find git root from symlink: %v", err)
+	}
+
+	// The result should be the resolved (real) path
+	absRepo, _ := filepath.EvalSymlinks(repoDir)
+	absRoot, _ := filepath.EvalSymlinks(root)
+
+	if absRoot != absRepo {
+		t.Errorf("Expected resolved git root %s, got %s", absRepo, absRoot)
+	}
+}
