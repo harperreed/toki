@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/git"
+	"github.com/harper/toki/internal/storage"
 )
 
 // detectProjectContext attempts to find project from current directory.
@@ -31,7 +31,7 @@ func detectProjectContext() (*uuid.UUID, error) {
 	}
 
 	// Look up project by path
-	project, err := charm.GetClient().GetProjectByPath(gitRoot)
+	project, err := GetStorage().GetProjectByPath(gitRoot)
 	if err == nil {
 		return &project.ID, nil
 	}
@@ -46,13 +46,13 @@ func detectProjectContext() (*uuid.UUID, error) {
 	response = strings.TrimSpace(strings.ToLower(response))
 
 	if response == "" || response == "y" || response == "yes" {
-		project := &charm.Project{
+		project := &storage.Project{
 			ID:            uuid.New(),
 			Name:          projectName,
 			DirectoryPath: gitRoot,
 			CreatedAt:     time.Now().UTC(),
 		}
-		if err := charm.GetClient().CreateProject(project); err != nil {
+		if err := GetStorage().CreateProject(project); err != nil {
 			return nil, fmt.Errorf("failed to create project: %w", err)
 		}
 		fmt.Printf("✓ Created project '%s'\n", projectName)
@@ -65,7 +65,7 @@ func detectProjectContext() (*uuid.UUID, error) {
 // getProjectID gets project ID from flag or context.
 func getProjectID(projectFlag string) (*uuid.UUID, error) {
 	if projectFlag != "" {
-		project, err := charm.GetClient().GetProjectByName(projectFlag)
+		project, err := GetStorage().GetProjectByName(projectFlag)
 		if err != nil {
 			return nil, fmt.Errorf("project '%s' not found", projectFlag)
 		}
@@ -83,10 +83,30 @@ func getProjectID(projectFlag string) (*uuid.UUID, error) {
 	}
 
 	// No project context - use or create "default" project
-	project, err := charm.GetClient().CreateDefaultProject()
+	project, err := getOrCreateDefaultProject()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create default project: %w", err)
 	}
 
 	return &project.ID, nil
+}
+
+// getOrCreateDefaultProject creates or returns the default project.
+func getOrCreateDefaultProject() (*storage.Project, error) {
+	project, err := GetStorage().GetProjectByName("default")
+	if err == nil {
+		return project, nil
+	}
+
+	project = &storage.Project{
+		ID:        uuid.New(),
+		Name:      "default",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := GetStorage().CreateProject(project); err != nil {
+		return nil, err
+	}
+
+	return project, nil
 }

@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/charm"
-	"github.com/harper/toki/internal/models"
+	"github.com/harper/toki/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -44,12 +43,6 @@ func (s *Server) registerResources() {
 
 	// Statistics and analytics
 	s.registerStatsResource()
-
-	// TODO(v2): Project-specific todos resource (toki://projects/{project-id}/todos)
-	// The MCP Go SDK v1.1.0 doesn't support URI templates for resources with path parameters.
-	// This would require matching URIs like toki://projects/abc123.../todos and extracting
-	// the project-id parameter. For v1, use the list_todos tool with project_id parameter,
-	// or filter all todos client-side. Future SDK versions may add URI template support.
 }
 
 func (s *Server) registerProjectsResource() {
@@ -59,14 +52,14 @@ func (s *Server) registerProjectsResource() {
 		Description: "List all projects with metadata including name, directory path, and creation time",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		charmProjects, err := s.client.ListProjects()
+		projects, err := s.storage.ListProjects()
 		if err != nil {
 			return nil, fmt.Errorf("failed to list projects: %w", err)
 		}
 
 		// Convert to output format
-		projectOutputs := make([]map[string]interface{}, 0, len(charmProjects))
-		for _, proj := range charmProjects {
+		projectOutputs := make([]map[string]interface{}, 0, len(projects))
+		for _, proj := range projects {
 			output := map[string]interface{}{
 				"id":         proj.ID.String(),
 				"name":       proj.Name,
@@ -154,26 +147,12 @@ func (s *Server) registerTodosHighPriorityResource() {
 }
 
 func (s *Server) registerQueryResource() {
-	// TODO(v2): The MCP Go SDK v1.1.0 doesn't support URI templates for resources.
-	// This means we can't register `toki://query{?params}` as a single resource
-	// that matches query://query?foo=bar URLs.
-	//
-	// For v1, we register the base toki://query resource which returns all todos.
-	// Future versions could:
-	// 1. Use a custom resource matcher (if SDK adds support)
-	// 2. Register multiple specific query combinations
-	// 3. Move complex queries to Tools instead of Resources
-	//
-	// For now, use pre-built resources (pending, overdue, high-priority) for
-	// common filtered views, and use the list_todos Tool for custom queries.
 	s.mcp.AddResource(&mcp.Resource{
 		URI:         "toki://query",
 		Name:        "All Todos (Query Base)",
-		Description: "Returns all todos. In v1, use pre-built resources (toki://todos/pending, toki://todos/overdue, toki://todos/high-priority) for filtered views, or use the list_todos tool for custom filtering.",
+		Description: "Returns all todos. Use pre-built resources (toki://todos/pending, toki://todos/overdue, toki://todos/high-priority) for filtered views, or use the list_todos tool for custom filtering.",
 		MIMEType:    "application/json",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		// v1: Just return all todos
-		// For filtered queries, clients should use pre-built resources or the list_todos tool
 		return s.handleTodoResource(ctx, req, nil, nil, nil, nil, false)
 	})
 }
@@ -195,10 +174,7 @@ func (s *Server) handleTodoResource(
 	}
 
 	// Convert to output format
-	todoOutputs, err := s.buildTodoOutputs(todos)
-	if err != nil {
-		return nil, err
-	}
+	todoOutputs := s.buildTodoOutputsFromStorage(todos)
 
 	// Build response metadata
 	filters := buildFiltersMetadata(projectID, done, priority, tag, overdue)
@@ -231,64 +207,53 @@ func (s *Server) handleTodoResource(
 	}, nil
 }
 
-// fetchAndFilterTodos retrieves todos from Charm KV and applies filters.
+// fetchAndFilterTodos retrieves todos from storage and applies filters.
 func (s *Server) fetchAndFilterTodos(
 	projectID *uuid.UUID,
 	done *bool,
 	priority *string,
 	tag *string,
 	overdue bool,
-) ([]*models.Todo, error) {
-	// Build filter
-	filter := &charm.TodoFilter{
+) ([]*storage.Todo, error) {
+	filter := &storage.TodoFilter{
 		ProjectID: projectID,
 		Done:      done,
 		Priority:  priority,
 		Tag:       tag,
 	}
 
-	charmTodos, err := s.client.ListTodos(filter)
+	if overdue {
+		overdueVal := true
+		filter.Overdue = &overdueVal
+	}
+
+	todos, err := s.storage.ListTodos(filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
 
-	// Convert to models.Todo
-	modelsTodos := make([]*models.Todo, 0, len(charmTodos))
-	for _, charmTodo := range charmTodos {
-		modelsTodos = append(modelsTodos, charm.ToModelsTodo(charmTodo))
-	}
-
-	if overdue {
-		modelsTodos = filterOverdueTodos(modelsTodos)
-	}
-
-	return modelsTodos, nil
+	return todos, nil
 }
 
-// buildTodoOutputs converts todos to JSON-serializable format.
-func (s *Server) buildTodoOutputs(todos []*models.Todo) ([]map[string]interface{}, error) {
+// buildTodoOutputsFromStorage converts storage todos to JSON-serializable format.
+func (s *Server) buildTodoOutputsFromStorage(todos []*storage.Todo) []map[string]interface{} {
 	todoOutputs := make([]map[string]interface{}, 0, len(todos))
 
 	for _, todo := range todos {
-		tags, err := s.client.GetTagsForTodo(todo.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get tags: %w", err)
-		}
-
 		output := map[string]interface{}{
 			"id":          todo.ID.String(),
 			"project_id":  todo.ProjectID.String(),
 			"description": todo.Description,
 			"done":        todo.Done,
 			"created_at":  todo.CreatedAt,
-			"tags":        tags,
+			"tags":        todo.Tags,
 		}
 
-		if todo.Priority != nil {
-			output["priority"] = *todo.Priority
+		if todo.Priority != "" {
+			output["priority"] = todo.Priority
 		}
-		if todo.Notes != nil {
-			output["notes"] = *todo.Notes
+		if todo.Notes != "" {
+			output["notes"] = todo.Notes
 		}
 		if todo.CompletedAt != nil {
 			output["completed_at"] = *todo.CompletedAt
@@ -300,7 +265,7 @@ func (s *Server) buildTodoOutputs(todos []*models.Todo) ([]map[string]interface{
 		todoOutputs = append(todoOutputs, output)
 	}
 
-	return todoOutputs, nil
+	return todoOutputs
 }
 
 // buildFiltersMetadata creates the filters map for resource metadata.
@@ -457,27 +422,15 @@ type OldestPendingTodo struct {
 //nolint:funlen // Stats calculation aggregates multiple data sources in a single pass
 func (s *Server) calculateStats() (*StatsData, error) {
 	// Fetch all todos
-	charmTodos, err := s.client.ListTodos(&charm.TodoFilter{})
+	allTodos, err := s.storage.ListTodos(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list todos: %w", err)
 	}
 
-	// Convert to models.Todo
-	allTodos := make([]*models.Todo, 0, len(charmTodos))
-	for _, charmTodo := range charmTodos {
-		allTodos = append(allTodos, charm.ToModelsTodo(charmTodo))
-	}
-
 	// Fetch all projects
-	charmProjects, err := s.client.ListProjects()
+	projects, err := s.storage.ListProjects()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list projects: %w", err)
-	}
-
-	// Convert to models.Project
-	projects := make([]*models.Project, 0, len(charmProjects))
-	for _, charmProject := range charmProjects {
-		projects = append(projects, charm.ToModelsProject(charmProject))
 	}
 
 	// Calculate summary stats
@@ -487,7 +440,7 @@ func (s *Server) calculateStats() (*StatsData, error) {
 
 	priorityCounts := make(map[string]int)
 	projectCounts := make(map[uuid.UUID]int)
-	var oldestPending *models.Todo
+	var oldestPending *storage.Todo
 	now := time.Now()
 
 	for _, todo := range allTodos {
@@ -510,8 +463,8 @@ func (s *Server) calculateStats() (*StatsData, error) {
 
 		// Count by priority
 		priority := "none"
-		if todo.Priority != nil {
-			priority = *todo.Priority
+		if todo.Priority != "" {
+			priority = todo.Priority
 		}
 		priorityCounts[priority]++
 

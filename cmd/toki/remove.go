@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
 )
 
@@ -19,14 +18,14 @@ var removeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		prefix := args[0]
 
-		charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
+		todo, err := GetStorage().GetTodoByPrefix(prefix)
 		if err != nil {
 			return err
 		}
 
-		desc := charmTodo.Description
+		desc := todo.Description
 
-		if err := charm.GetClient().DeleteTodo(charmTodo.ID); err != nil {
+		if err := GetStorage().DeleteTodo(todo.ID); err != nil {
 			return fmt.Errorf("failed to delete todo: %w", err)
 		}
 

@@ -9,8 +9,8 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/git"
+	"github.com/harper/toki/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ var projectAddCmd = &cobra.Command{
 		name := args[0]
 
 		// Check if project already exists
-		existingProject, err := charm.GetClient().GetProjectByName(name)
+		existingProject, err := GetStorage().GetProjectByName(name)
 		if err == nil {
 			color.Yellow("Project '%s' already exists (ID: %s)", name, existingProject.ID.String()[:8])
 			if existingProject.DirectoryPath != "" {
@@ -49,14 +49,14 @@ var projectAddCmd = &cobra.Command{
 			dirPath = normalized
 		}
 
-		project := &charm.Project{
+		project := &storage.Project{
 			ID:            uuid.New(),
 			Name:          name,
 			DirectoryPath: dirPath,
 			CreatedAt:     time.Now().UTC(),
 		}
 
-		if err := charm.GetClient().CreateProject(project); err != nil {
+		if err := GetStorage().CreateProject(project); err != nil {
 			return fmt.Errorf("failed to create project: %w", err)
 		}
 
@@ -74,7 +74,7 @@ var projectListCmd = &cobra.Command{
 	Aliases: []string{"ls", "l"},
 	Short:   "List all projects",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projects, err := charm.GetClient().ListProjects()
+		projects, err := GetStorage().ListProjects()
 		if err != nil {
 			return fmt.Errorf("failed to list projects: %w", err)
 		}
@@ -107,7 +107,7 @@ var projectSetPathCmd = &cobra.Command{
 		name := args[0]
 		pathArg := args[1]
 
-		project, err := charm.GetClient().GetProjectByName(name)
+		project, err := GetStorage().GetProjectByName(name)
 		if err != nil {
 			return fmt.Errorf("project not found: %w", err)
 		}
@@ -119,7 +119,7 @@ var projectSetPathCmd = &cobra.Command{
 
 		project.DirectoryPath = normalized
 
-		if err := charm.GetClient().UpdateProject(project); err != nil {
+		if err := GetStorage().UpdateProject(project); err != nil {
 			return fmt.Errorf("failed to update path: %w", err)
 		}
 
@@ -138,33 +138,24 @@ var projectRemoveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
-		project, err := charm.GetClient().GetProjectByName(name)
+		project, err := GetStorage().GetProjectByName(name)
 		if err != nil {
 			return fmt.Errorf("project not found: %w", err)
 		}
 
-		// Cascade delete: remove all todos in this project first
-		filter := &charm.TodoFilter{ProjectID: &project.ID}
-		todos, err := charm.GetClient().ListTodos(filter)
+		// Count todos that will be deleted
+		filter := &storage.TodoFilter{ProjectID: &project.ID}
+		todos, err := GetStorage().ListTodos(filter)
 		if err != nil {
 			return fmt.Errorf("failed to list project todos: %w", err)
 		}
 
-		deletedCount := 0
-		for _, todo := range todos {
-			if err := charm.GetClient().DeleteTodo(todo.ID); err != nil {
-				// Log warning but continue - best effort cleanup
-				fmt.Printf("Warning: failed to delete todo %s: %v\n", todo.ID, err)
-			} else {
-				deletedCount++
-			}
-		}
-
-		if err := charm.GetClient().DeleteProject(project.ID); err != nil {
+		// Delete project (cascades to todos due to foreign key)
+		if err := GetStorage().DeleteProject(project.ID); err != nil {
 			return fmt.Errorf("failed to delete project: %w", err)
 		}
 
-		color.Yellow("✓ Removed project '%s' and %d todos", name, deletedCount)
+		color.Yellow("✓ Removed project '%s' and %d todos", name, len(todos))
 
 		return nil
 	},
@@ -179,13 +170,13 @@ This is useful when sync has caused multiple projects with the same name
 to exist. The first project (by creation time) is kept, duplicates are removed.
 Todos attached to duplicate projects are reassigned to the kept project.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projects, err := charm.GetClient().ListProjects()
+		projects, err := GetStorage().ListProjects()
 		if err != nil {
 			return fmt.Errorf("failed to list projects: %w", err)
 		}
 
 		// Group projects by name
-		projectsByName := make(map[string][]*charm.Project)
+		projectsByName := make(map[string][]*storage.Project)
 		for _, p := range projects {
 			projectsByName[p.Name] = append(projectsByName[p.Name], p)
 		}
@@ -213,18 +204,18 @@ Todos attached to duplicate projects are reassigned to the kept project.`,
 				}
 
 				// Move todos from duplicate to kept project
-				filter := &charm.TodoFilter{ProjectID: &p.ID}
-				todos, err := charm.GetClient().ListTodos(filter)
+				filter := &storage.TodoFilter{ProjectID: &p.ID}
+				todos, err := GetStorage().ListTodos(filter)
 				if err == nil {
 					for _, todo := range todos {
 						todo.ProjectID = keep.ID
-						_ = charm.GetClient().UpdateTodo(todo)
+						_ = GetStorage().UpdateTodo(todo)
 						totalTodosMoved++
 					}
 				}
 
 				// Delete duplicate project
-				if err := charm.GetClient().DeleteProject(p.ID); err != nil {
+				if err := GetStorage().DeleteProject(p.ID); err != nil {
 					fmt.Printf("Warning: failed to delete duplicate project %s: %v\n", p.ID, err)
 				} else {
 					totalRemoved++

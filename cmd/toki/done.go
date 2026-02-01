@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
 )
 
@@ -18,17 +17,17 @@ var doneCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		for _, prefix := range args {
-			charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
+			todo, err := GetStorage().GetTodoByPrefix(prefix)
 			if err != nil {
 				return err
 			}
 
-			if err := charm.GetClient().MarkTodoDone(charmTodo.ID, true); err != nil {
+			if err := GetStorage().MarkTodoDone(todo.ID, true); err != nil {
 				return fmt.Errorf("failed to update todo: %w", err)
 			}
 
 			color.Green("✓ Marked todo as done")
-			fmt.Printf("  %s %s\n", prefix, charmTodo.Description)
+			fmt.Printf("  %s %s\n", prefix, todo.Description)
 		}
 
 		return nil
@@ -42,17 +41,17 @@ var undoneCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		for _, prefix := range args {
-			charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
+			todo, err := GetStorage().GetTodoByPrefix(prefix)
 			if err != nil {
 				return err
 			}
 
-			if err := charm.GetClient().MarkTodoDone(charmTodo.ID, false); err != nil {
+			if err := GetStorage().MarkTodoDone(todo.ID, false); err != nil {
 				return fmt.Errorf("failed to update todo: %w", err)
 			}
 
 			color.Yellow("✓ Marked todo as not done")
-			fmt.Printf("  %s %s\n", prefix, charmTodo.Description)
+			fmt.Printf("  %s %s\n", prefix, todo.Description)
 		}
 
 		return nil

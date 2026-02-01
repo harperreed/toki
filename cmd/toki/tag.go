@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/harper/toki/internal/charm"
 	"github.com/spf13/cobra"
 )
 
@@ -26,17 +25,17 @@ var tagAddCmd = &cobra.Command{
 		prefix := args[0]
 		tagName := strings.ToLower(args[1])
 
-		charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
+		todo, err := GetStorage().GetTodoByPrefix(prefix)
 		if err != nil {
 			return err
 		}
 
-		if err := charm.GetClient().AddTagToTodo(charmTodo.ID, tagName); err != nil {
+		if err := GetStorage().AddTagToTodo(todo.ID, tagName); err != nil {
 			return fmt.Errorf("failed to add tag: %w", err)
 		}
 
 		color.Green("✓ Added tag '%s'", tagName)
-		fmt.Printf("  %s\n", charmTodo.Description)
+		fmt.Printf("  %s\n", todo.Description)
 
 		return nil
 	},
@@ -51,17 +50,17 @@ var tagRemoveCmd = &cobra.Command{
 		prefix := args[0]
 		tagName := strings.ToLower(args[1])
 
-		charmTodo, err := charm.GetClient().GetTodoByPrefix(prefix)
+		todo, err := GetStorage().GetTodoByPrefix(prefix)
 		if err != nil {
 			return err
 		}
 
-		if err := charm.GetClient().RemoveTagFromTodo(charmTodo.ID, tagName); err != nil {
+		if err := GetStorage().RemoveTagFromTodo(todo.ID, tagName); err != nil {
 			return fmt.Errorf("failed to remove tag: %w", err)
 		}
 
 		color.Yellow("✓ Removed tag '%s'", tagName)
-		fmt.Printf("  %s\n", charmTodo.Description)
+		fmt.Printf("  %s\n", todo.Description)
 
 		return nil
 	},
@@ -71,7 +70,7 @@ var tagsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tags",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tags, err := charm.GetClient().ListTags()
+		tags, err := GetStorage().ListTags()
 		if err != nil {
 			return fmt.Errorf("failed to list tags: %w", err)
 		}

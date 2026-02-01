@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/harper/toki/internal/charm"
-	"github.com/harper/toki/internal/models"
+	"github.com/google/uuid"
+	"github.com/harper/toki/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,22 @@ var addCmd = &cobra.Command{
 			return err
 		}
 
-		todo := models.NewTodo(*projectID, description)
+		// Get project for the name
+		project, err := GetStorage().GetProject(*projectID)
+		if err != nil {
+			return fmt.Errorf("failed to get project: %w", err)
+		}
+
+		now := time.Now().UTC()
+		todo := &storage.Todo{
+			ID:          uuid.New(),
+			ProjectID:   *projectID,
+			ProjectName: project.Name,
+			Description: description,
+			Done:        false,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
 
 		// Handle optional flags
 		if priority, _ := cmd.Flags().GetString("priority"); priority != "" {
@@ -40,11 +55,11 @@ var addCmd = &cobra.Command{
 			if priority != "low" && priority != "medium" && priority != "high" {
 				return fmt.Errorf("priority must be low, medium, or high")
 			}
-			todo.Priority = &priority
+			todo.Priority = priority
 		}
 
 		if notes, _ := cmd.Flags().GetString("notes"); notes != "" {
-			todo.Notes = &notes
+			todo.Notes = notes
 		}
 
 		if dueStr, _ := cmd.Flags().GetString("due"); dueStr != "" {
@@ -55,31 +70,18 @@ var addCmd = &cobra.Command{
 			todo.DueDate = &dueDate
 		}
 
-		// Get project name for charm conversion
-		project, err := charm.GetClient().GetProject(*projectID)
-		if err != nil {
-			return fmt.Errorf("failed to get project: %w", err)
-		}
-
-		// Collect tags first
-		var tags []string
+		// Collect tags
 		if tagsStr, _ := cmd.Flags().GetString("tags"); tagsStr != "" {
 			tagList := strings.Split(tagsStr, ",")
 			for _, tag := range tagList {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
-					tags = append(tags, tag)
-					// Ensure tag exists in tag registry
-					if _, err := charm.GetClient().GetOrCreateTag(tag); err != nil {
-						return fmt.Errorf("failed to create tag: %w", err)
-					}
+					todo.Tags = append(todo.Tags, tag)
 				}
 			}
 		}
 
-		// Convert models.Todo to charm.Todo and create
-		charmTodo := charm.FromModelsTodo(todo, project.Name, tags)
-		if err := charm.GetClient().CreateTodo(charmTodo); err != nil {
+		if err := GetStorage().CreateTodo(todo); err != nil {
 			return fmt.Errorf("failed to create todo: %w", err)
 		}
 

@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/models"
+	"github.com/harper/toki/internal/storage"
 	"github.com/harper/toki/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -60,7 +60,7 @@ var listCmd = &cobra.Command{
 		}
 
 		// Build filter
-		filter := &charm.TodoFilter{
+		filter := &storage.TodoFilter{
 			ProjectID: projectID,
 			Done:      done,
 			Priority:  priority,
@@ -68,12 +68,12 @@ var listCmd = &cobra.Command{
 		}
 
 		// Get todos
-		charmTodos, err := charm.GetClient().ListTodos(filter)
+		todos, err := GetStorage().ListTodos(filter)
 		if err != nil {
 			return fmt.Errorf("failed to list todos: %w", err)
 		}
 
-		if len(charmTodos) == 0 {
+		if len(todos) == 0 {
 			fmt.Println("No todos found. Add one with 'toki add <description>'")
 			return nil
 		}
@@ -84,12 +84,13 @@ var listCmd = &cobra.Command{
 			tags []*models.Tag
 		})
 
-		for _, charmTodo := range charmTodos {
-			todo := charm.ToModelsTodo(charmTodo)
+		for _, storageTodo := range todos {
+			// Convert storage.Todo to models.Todo
+			todo := storageToModelsTodo(storageTodo)
 
 			// Convert string tags to models.Tag
-			modelTags := make([]*models.Tag, len(charmTodo.Tags))
-			for i, tagName := range charmTodo.Tags {
+			modelTags := make([]*models.Tag, len(storageTodo.Tags))
+			for i, tagName := range storageTodo.Tags {
 				modelTags[i] = &models.Tag{Name: tagName}
 			}
 
@@ -108,13 +109,13 @@ var listCmd = &cobra.Command{
 		// Display grouped by project
 		totalCount := 0
 		for projID, items := range projectTodos {
-			charmProject, err := charm.GetClient().GetProject(projID)
+			project, err := GetStorage().GetProject(projID)
 			if err != nil {
 				continue
 			}
-			project := charm.ToModelsProject(charmProject)
+			modelsProject := storageToModelsProject(project)
 
-			fmt.Println(ui.FormatProjectHeader(project))
+			fmt.Println(ui.FormatProjectHeader(modelsProject))
 			fmt.Println(ui.FormatSeparator())
 
 			for _, item := range items {
@@ -134,6 +135,47 @@ var listCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// storageToModelsTodo converts a storage.Todo to models.Todo.
+func storageToModelsTodo(t *storage.Todo) *models.Todo {
+	var priority *string
+	if t.Priority != "" {
+		priority = &t.Priority
+	}
+
+	var notes *string
+	if t.Notes != "" {
+		notes = &t.Notes
+	}
+
+	return &models.Todo{
+		ID:          t.ID,
+		ProjectID:   t.ProjectID,
+		Description: t.Description,
+		Done:        t.Done,
+		Priority:    priority,
+		Notes:       notes,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		CompletedAt: t.CompletedAt,
+		DueDate:     t.DueDate,
+	}
+}
+
+// storageToModelsProject converts a storage.Project to models.Project.
+func storageToModelsProject(p *storage.Project) *models.Project {
+	var dirPath *string
+	if p.DirectoryPath != "" {
+		dirPath = &p.DirectoryPath
+	}
+
+	return &models.Project{
+		ID:            p.ID,
+		Name:          p.Name,
+		DirectoryPath: dirPath,
+		CreatedAt:     p.CreatedAt,
+	}
 }
 
 func init() {

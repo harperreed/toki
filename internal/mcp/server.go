@@ -7,20 +7,20 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/harper/toki/internal/charm"
+	"github.com/harper/toki/internal/storage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Server wraps MCP server with Charm KV client.
+// Server wraps MCP server with SQLite storage.
 type Server struct {
-	mcp    *mcp.Server
-	client *charm.Client
+	mcp     *mcp.Server
+	storage *storage.SQLiteStorage
 }
 
 // NewServer creates MCP server with all capabilities.
-func NewServer(client *charm.Client) (*Server, error) {
-	if client == nil {
-		return nil, fmt.Errorf("charm client is required")
+func NewServer(store *storage.SQLiteStorage) (*Server, error) {
+	if store == nil {
+		return nil, fmt.Errorf("storage is required")
 	}
 
 	mcpServer := mcp.NewServer(
@@ -32,8 +32,8 @@ func NewServer(client *charm.Client) (*Server, error) {
 	)
 
 	s := &Server{
-		mcp:    mcpServer,
-		client: client,
+		mcp:     mcpServer,
+		storage: store,
 	}
 
 	// Register tools, resources, prompts

@@ -55,27 +55,20 @@ func TestFullWorkflow(t *testing.T) {
 func TestSyncStatus(t *testing.T) {
 	run := setupTestBinary(t)
 
-	// Use temp config directory - set XDG_CONFIG_HOME which takes precedence
-	configDir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configDir)
-
 	// Run sync status
 	output, err := run("sync", "status")
 	if err != nil {
 		t.Fatalf("Failed to get sync status: %v\n%s", err, output)
 	}
 
-	if !strings.Contains(output, "Config:") {
-		t.Error("Expected config path in output")
+	// Should show database path
+	if !strings.Contains(output, "Database:") {
+		t.Error("Expected database path in output")
 	}
 
-	if !strings.Contains(output, "Server:") {
-		t.Error("Expected server in output")
-	}
-
-	// Should show default server
-	if !strings.Contains(output, "charm.2389.dev") {
-		t.Error("Expected default Charm server")
+	// Should show status (healthy or no file found)
+	if !strings.Contains(output, "Status:") {
+		t.Error("Expected status in output")
 	}
 }
 

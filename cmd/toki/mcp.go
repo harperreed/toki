@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/harper/toki/internal/charm"
 	"github.com/harper/toki/internal/mcp"
 	"github.com/spf13/cobra"
 )
@@ -36,15 +35,15 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Charm client is initialized by root command's PersistentPreRunE
-	// and available via charm.GetClient()
-	client := charm.GetClient()
-	if client == nil {
-		return fmt.Errorf("charm client not initialized")
+	// Storage is initialized by root command's PersistentPreRunE
+	// and available via GetStorage()
+	store := GetStorage()
+	if store == nil {
+		return fmt.Errorf("storage not initialized")
 	}
 
-	// Create MCP server with Charm client
-	server, err := mcp.NewServer(client)
+	// Create MCP server with storage
+	server, err := mcp.NewServer(store)
 	if err != nil {
 		return err
 	}
