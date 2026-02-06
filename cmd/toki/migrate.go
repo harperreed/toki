@@ -113,7 +113,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func importProject(store *storage.SQLiteStorage, proj ExportProject, dryRun bool) (bool, error) {
+func importProject(store storage.Storage, proj ExportProject, dryRun bool) (bool, error) {
 	// Parse UUID
 	id, err := uuid.Parse(proj.ID)
 	if err != nil {
@@ -147,7 +147,7 @@ func importProject(store *storage.SQLiteStorage, proj ExportProject, dryRun bool
 }
 
 //nolint:funlen // Import logic is inherently sequential and splitting would reduce clarity
-func importTodo(store *storage.SQLiteStorage, projectID string, todo ExportTodo, dryRun bool) (bool, int, error) {
+func importTodo(store storage.Storage, projectID string, todo ExportTodo, dryRun bool) (bool, int, error) {
 	// Parse UUIDs
 	todoID, err := uuid.Parse(todo.ID)
 	if err != nil {

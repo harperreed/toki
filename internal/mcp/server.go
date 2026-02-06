@@ -11,14 +11,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Server wraps MCP server with SQLite storage.
+// Server wraps MCP server with storage backend.
 type Server struct {
 	mcp     *mcp.Server
-	storage *storage.SQLiteStorage
+	storage storage.Storage
 }
 
 // NewServer creates MCP server with all capabilities.
-func NewServer(store *storage.SQLiteStorage) (*Server, error) {
+func NewServer(store storage.Storage) (*Server, error) {
 	if store == nil {
 		return nil, fmt.Errorf("storage is required")
 	}

@@ -5,11 +5,14 @@ go 1.24.9
 require (
 	github.com/fatih/color v1.18.0
 	github.com/google/uuid v1.6.0
+	github.com/harper/suite/mdstore v0.0.0-00010101000000-000000000000
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 	github.com/spf13/cobra v1.10.1
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.41.0
 )
+
+replace github.com/harper/suite/mdstore => ../mdstore
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

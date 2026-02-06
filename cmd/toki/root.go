@@ -7,22 +7,27 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/harper/toki/internal/config"
 	"github.com/harper/toki/internal/storage"
 	"github.com/spf13/cobra"
 )
 
 // Global storage for command usage (thread-safe initialization).
 var (
-	globalStorage *storage.SQLiteStorage
+	globalStorage storage.Storage
 	storageOnce   sync.Once
 	storageErr    error
 )
 
-// InitStorage initializes the global SQLite storage (thread-safe).
+// InitStorage initializes the global storage using the configured backend (thread-safe).
 func InitStorage() error {
 	storageOnce.Do(func() {
-		dbPath := storage.DefaultDBPath()
-		globalStorage, storageErr = storage.NewSQLiteStorage(dbPath)
+		cfg, err := config.Load()
+		if err != nil {
+			storageErr = fmt.Errorf("load config: %w", err)
+			return
+		}
+		globalStorage, storageErr = cfg.OpenStorage()
 	})
 	return storageErr
 }
@@ -36,7 +41,7 @@ func CloseStorage() error {
 }
 
 // GetStorage returns the global storage.
-func GetStorage() *storage.SQLiteStorage {
+func GetStorage() storage.Storage {
 	return globalStorage
 }
 
@@ -57,7 +62,7 @@ Toki is a CLI todo manager that organizes tasks by project,
 supports rich metadata (priority, tags, notes, due dates),
 and automatically detects project context from git repositories.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Initialize SQLite storage
+		// Initialize storage from config
 		if err := InitStorage(); err != nil {
 			return fmt.Errorf("failed to initialize storage: %w", err)
 		}

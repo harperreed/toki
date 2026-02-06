@@ -45,7 +45,7 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 	return server, cleanup
 }
 
-func createTestProject(t *testing.T, store *storage.SQLiteStorage, name string) *storage.Project {
+func createTestProject(t *testing.T, store storage.Storage, name string) *storage.Project {
 	t.Helper()
 
 	project := &storage.Project{
@@ -59,7 +59,7 @@ func createTestProject(t *testing.T, store *storage.SQLiteStorage, name string) 
 	return project
 }
 
-func createTestTodo(t *testing.T, store *storage.SQLiteStorage, projectID uuid.UUID, description string) *storage.Todo {
+func createTestTodo(t *testing.T, store storage.Storage, projectID uuid.UUID, description string) *storage.Todo {
 	t.Helper()
 
 	now := time.Now().UTC()

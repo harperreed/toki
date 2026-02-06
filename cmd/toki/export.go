@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/harper/toki/internal/config"
 	"github.com/harper/toki/internal/storage"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -114,9 +115,12 @@ func init() {
 	rootCmd.AddCommand(exportCmd)
 }
 
-func getStorageForExport() (*storage.SQLiteStorage, error) {
-	dbPath := storage.DefaultDBPath()
-	return storage.NewSQLiteStorage(dbPath)
+func getStorageForExport() (storage.Storage, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return cfg.OpenStorage()
 }
 
 func exportToWriter(w io.Writer, format string, pretty bool) error {
@@ -144,7 +148,7 @@ func exportToWriter(w io.Writer, format string, pretty bool) error {
 	}
 }
 
-func buildExportData(store *storage.SQLiteStorage) (*ExportData, error) {
+func buildExportData(store storage.Storage) (*ExportData, error) {
 	projects, err := store.ListProjects()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list projects: %w", err)
