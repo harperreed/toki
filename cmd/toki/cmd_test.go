@@ -219,6 +219,7 @@ func TestSubcommandsRegistered(t *testing.T) {
 		"version",
 		"export",
 		"install-skill",
+		"setup",
 	}
 
 	registeredCommands := make(map[string]bool)
@@ -396,38 +397,14 @@ func TestCommandAliases(t *testing.T) {
 	}
 }
 
-func TestSyncCommand(t *testing.T) {
-	cmd, _, err := rootCmd.Find([]string{"sync"})
+func TestSetupCommand(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"setup"})
 	if err != nil {
-		t.Fatalf("sync command not found: %v", err)
+		t.Fatalf("setup command not found: %v", err)
 	}
 
-	if cmd.Name() != "sync" {
-		t.Errorf("expected command name 'sync', got '%s'", cmd.Name())
-	}
-}
-
-func TestSyncSubcommands(t *testing.T) {
-	cmd, _, err := rootCmd.Find([]string{"sync"})
-	if err != nil {
-		t.Fatalf("sync command not found: %v", err)
-	}
-
-	expectedSubcommands := []string{
-		"status",
-		"repair",
-		"reset",
-	}
-
-	registeredCommands := make(map[string]bool)
-	for _, subcmd := range cmd.Commands() {
-		registeredCommands[subcmd.Name()] = true
-	}
-
-	for _, expected := range expectedSubcommands {
-		if !registeredCommands[expected] {
-			t.Errorf("expected subcommand 'sync %s' to be registered", expected)
-		}
+	if cmd.Name() != "setup" {
+		t.Errorf("expected command name 'setup', got '%s'", cmd.Name())
 	}
 }
 

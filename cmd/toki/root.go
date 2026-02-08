@@ -62,11 +62,14 @@ Toki is a CLI todo manager that organizes tasks by project,
 supports rich metadata (priority, tags, notes, due dates),
 and automatically detects project context from git repositories.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Skip storage init for commands that don't need it
+		if cmd.Name() == "setup" || cmd.Name() == "version" || cmd.Name() == "help" || cmd.Name() == "completion" {
+			return nil
+		}
 		// Initialize storage from config
 		if err := InitStorage(); err != nil {
 			return fmt.Errorf("failed to initialize storage: %w", err)
 		}
-
 		return nil
 	},
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {

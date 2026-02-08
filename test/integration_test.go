@@ -52,26 +52,6 @@ func TestFullWorkflow(t *testing.T) {
 	t.Logf("Integration test passed!\n%s", output)
 }
 
-func TestSyncStatus(t *testing.T) {
-	run := setupTestBinary(t)
-
-	// Run sync status
-	output, err := run("sync", "status")
-	if err != nil {
-		t.Fatalf("Failed to get sync status: %v\n%s", err, output)
-	}
-
-	// Should show database path
-	if !strings.Contains(output, "Database:") {
-		t.Error("Expected database path in output")
-	}
-
-	// Should show status (healthy or no file found)
-	if !strings.Contains(output, "Status:") {
-		t.Error("Expected status in output")
-	}
-}
-
 func TestOfflineQueueing(t *testing.T) {
 	run := setupTestBinary(t)
 
