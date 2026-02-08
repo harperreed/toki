@@ -77,18 +77,24 @@ func (m SetupModel) Init() tea.Cmd {
 
 // Update implements tea.Model.
 func (m SetupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	keyMsg, ok := msg.(tea.KeyMsg)
-	if !ok {
-		return m, nil
-	}
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEscape {
+			m.quitting = true
+			return m, tea.Quit
+		}
 
-	if keyMsg.Type == tea.KeyCtrlC || keyMsg.Type == tea.KeyEscape {
-		m.quitting = true
-		return m, tea.Quit
-	}
-
-	if m.step == StepBackend || m.step == StepDataDir {
-		return m.updateInput(keyMsg)
+		if m.step == StepBackend || m.step == StepDataDir {
+			return m.updateInput(msg)
+		}
+	default:
+		// Forward other messages (e.g. cursor blink) to the active input
+		if m.step == StepBackend || m.step == StepDataDir {
+			idx := int(m.step)
+			var cmd tea.Cmd
+			m.inputs[idx], cmd = m.inputs[idx].Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil
