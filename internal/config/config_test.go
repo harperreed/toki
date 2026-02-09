@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,10 +35,7 @@ func TestGetBackend(t *testing.T) {
 
 func TestGetDataDir(t *testing.T) {
 	t.Run("default uses XDG", func(t *testing.T) {
-		originalXDG := os.Getenv("XDG_DATA_HOME")
-		defer func() { _ = os.Setenv("XDG_DATA_HOME", originalXDG) }()
-
-		_ = os.Setenv("XDG_DATA_HOME", "/custom/data")
+		t.Setenv("XDG_DATA_HOME", "/custom/data")
 		cfg := &Config{}
 		if got := cfg.GetDataDir(); got != "/custom/data/toki" {
 			t.Errorf("expected /custom/data/toki, got %q", got)
@@ -123,9 +121,7 @@ func TestOpenStorage(t *testing.T) {
 
 func TestLoadSaveConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	originalXDG := os.Getenv("XDG_CONFIG_HOME")
-	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", originalXDG) }()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	cfg := &Config{Backend: "markdown", DataDir: "~/my-todos"}
 	if err := cfg.Save(); err != nil {
@@ -147,15 +143,71 @@ func TestLoadSaveConfig(t *testing.T) {
 
 func TestLoadMissingConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	originalXDG := os.Getenv("XDG_CONFIG_HOME")
-	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", originalXDG) }()
-	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	// Also set XDG_DATA_HOME so defaultFirstRunConfig checks the right place
+	t.Setenv("XDG_DATA_HOME", tmpDir)
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load should not fail for missing file: %v", err)
 	}
-	if cfg.Backend != "" {
-		t.Errorf("expected empty backend, got %q", cfg.Backend)
+	if cfg.Backend != "markdown" {
+		t.Errorf("expected markdown backend for new user, got %q", cfg.Backend)
+	}
+
+	// Verify config file was auto-created
+	configPath := GetConfigPath()
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Error("expected config file to be auto-created")
+	}
+}
+
+func TestLoadMissingConfig_ExistingSQLiteUser(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	// Create a fake .db file to simulate existing SQLite user
+	dbDir := filepath.Join(tmpDir, "toki")
+	if err := os.MkdirAll(dbDir, 0750); err != nil {
+		t.Fatalf("failed to create db dir: %v", err)
+	}
+	dbPath := filepath.Join(dbDir, "toki.db")
+	if err := os.WriteFile(dbPath, []byte("fake-db"), 0600); err != nil {
+		t.Fatalf("failed to create fake db: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load should not fail: %v", err)
+	}
+	if cfg.Backend != "sqlite" {
+		t.Errorf("expected sqlite backend for existing user, got %q", cfg.Backend)
+	}
+}
+
+func TestLoadAutoCreatesValidConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// Read back the auto-created file and verify it's valid JSON
+	configPath := GetConfigPath()
+	data, err := os.ReadFile(configPath) // #nosec G304 - test path from t.TempDir()
+	if err != nil {
+		t.Fatalf("failed to read auto-created config: %v", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("auto-created config is not valid JSON: %v", err)
+	}
+	if raw["backend"] != "markdown" {
+		t.Errorf("expected backend 'markdown' in config file, got %v", raw["backend"])
 	}
 }
