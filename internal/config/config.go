@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/harper/suite/mdstore"
 	"github.com/harper/toki/internal/storage"
+	"github.com/harperreed/mdstore"
 )
 
 // Config stores Toki configuration.
