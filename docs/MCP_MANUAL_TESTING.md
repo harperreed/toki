@@ -11,7 +11,7 @@ This guide provides step-by-step instructions for manually testing the Toki MCP 
 ## Overview
 
 The Toki MCP server provides:
-- **11 Tools** for managing todos and projects
+- **11 Tools** for managing todos, projects, and tags
 - **7 Resources** for querying data (projects, todos, pending, overdue, high-priority, query, stats)
 - **6 Prompts** for workflow guidance
 
@@ -29,7 +29,7 @@ Add the following to your Claude Desktop MCP configuration file:
   "mcpServers": {
     "toki": {
       "command": "toki",
-      "args": ["serve"]
+      "args": ["mcp"]
     }
   }
 }
@@ -347,7 +347,7 @@ The server will communicate via stdin/stdout using the JSON-RPC protocol.
    ```
 
 7. **Read via MCP resource:**
-   - Resource: `toki://todos/all`
+   - Resource: `toki://todos`
    - Expected: CLI-created todo appears in MCP results
 
 ### Scenario 8: Error Handling
@@ -440,13 +440,13 @@ toki mcp
 
 ```bash
 # Check database location
-toki config
+toki setup
 
 # Verify database exists
-ls -la ~/.config/toki/
+ls -la ~/.local/share/toki/
 
 # Check database directly
-sqlite3 ~/.config/toki/toki.db "SELECT * FROM projects;"
+sqlite3 ~/.local/share/toki/toki.db "SELECT * FROM projects;"
 ```
 
 ### Tools not appearing
@@ -490,7 +490,7 @@ Use this checklist to track your manual testing:
 
 ## Additional Notes
 
-- Default database location: `~/.config/toki/toki.db`
+- Default database location: `~/.local/share/toki/toki.db`
 - Server uses stdio transport (stdin/stdout)
 - All timestamps are in RFC3339 format
 - All IDs are UUIDs

@@ -36,7 +36,7 @@ Add this to your Claude Desktop configuration file:
   "mcpServers": {
     "toki": {
       "command": "toki",
-      "args": ["serve"]
+      "args": ["mcp"]
     }
   }
 }
@@ -760,7 +760,7 @@ which toki
   "mcpServers": {
     "toki": {
       "command": "/full/path/to/toki",
-      "args": ["serve"]
+      "args": ["mcp"]
     }
   }
 }
@@ -838,8 +838,8 @@ sqlite3 ~/.local/share/toki/toki.db "SELECT * FROM todos;"
 
 ## Additional Resources
 
-- **Toki GitHub Repository:** https://github.com/harper/toki
+- **Toki GitHub Repository:** https://github.com/harperreed/toki
 - **MCP Specification:** https://modelcontextprotocol.io
-- **Issue Tracker:** https://github.com/harper/toki/issues
+- **Issue Tracker:** https://github.com/harperreed/toki/issues
 
 For questions or bug reports, please open an issue on GitHub.

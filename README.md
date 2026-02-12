@@ -8,7 +8,7 @@ A super simple git-aware CLI todo manager.
 - **Rich metadata** - Priority, tags, notes, and due dates
 - **UUID-based identifiers** - Stable IDs with short prefix matching
 - **Clean CLI** - Intuitive commands with short aliases
-- **SQLite storage** - Fast, reliable, single-file database
+- **Flexible storage** - SQLite or Markdown backends (user-configurable)
 
 ## Installation
 
@@ -19,7 +19,7 @@ go install github.com/harper/toki/cmd/toki@latest
 Or build from source:
 
 ```bash
-git clone https://github.com/harper/toki
+git clone https://github.com/harperreed/toki
 cd toki
 make install
 ```
@@ -87,6 +87,14 @@ toki tag remove <uuid-prefix> <tag>        # Remove tag
 toki tag list                              # Show all tags
 ```
 
+### Utilities
+
+```bash
+toki setup                                 # Interactive storage configuration wizard
+toki migrate                               # Migrate between SQLite and Markdown backends
+toki version                               # Display version information
+```
+
 ## Git-Aware Context
 
 When you run `toki add` or `toki list` from within a git repository:
@@ -115,7 +123,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
   "mcpServers": {
     "toki": {
       "command": "toki",
-      "args": ["serve"]
+      "args": ["mcp"]
     }
   }
 }
@@ -191,7 +199,12 @@ make install
 
 ## Data Storage
 
-Toki stores all data in `~/.local/share/toki/toki.db` (XDG standard).
+Toki supports two storage backends, configurable via `toki setup`:
+
+- **SQLite** (default for existing users): `~/.local/share/toki/toki.db`
+- **Markdown** (default for new users): `~/.local/share/toki/` directory with `.md` files
+
+Both backends follow the XDG standard (`$XDG_DATA_HOME/toki/`).
 
 ## Design
 

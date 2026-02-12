@@ -79,8 +79,6 @@ func (s *Server) registerTools() {
 	s.registerAddProjectTool()
 	s.registerListProjectsTool()
 	s.registerDeleteProjectTool()
-	s.registerSyncStatusTool()
-	s.registerSyncNowTool()
 }
 
 func (s *Server) registerAddTodoTool() {
@@ -934,84 +932,6 @@ func (s *Server) handleDeleteProject(_ context.Context, req *mcp.CallToolRequest
 		Success:   true,
 		Message:   fmt.Sprintf("Project '%s' and all associated todos successfully deleted", input.ProjectID),
 		ProjectID: input.ProjectID,
-	}
-
-	jsonBytes, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
-	}, output, nil
-}
-
-// SyncStatusInput defines the input parameters for the sync_status tool.
-type SyncStatusInput struct{}
-
-// SyncStatusOutput defines the output structure for the sync_status tool.
-type SyncStatusOutput struct {
-	Configured   bool   `json:"configured"`
-	Server       string `json:"server"`
-	PendingCount int    `json:"pending_count"`
-	LastSync     string `json:"last_sync"`
-}
-
-func (s *Server) registerSyncStatusTool() {
-	mcp.AddTool(s.mcp, &mcp.Tool{
-		Name:        "sync_status",
-		Description: `Get sync status including pending changes and configuration. Returns information about vault sync configuration, number of pending changes waiting to be synced, auto-sync setting, and last sync timestamp. Use this to check if sync is configured and see how many changes are queued.`,
-		InputSchema: map[string]interface{}{
-			"type": "object",
-		},
-	}, s.handleSyncStatus)
-}
-
-func (s *Server) handleSyncStatus(ctx context.Context, req *mcp.CallToolRequest, input SyncStatusInput) (*mcp.CallToolResult, SyncStatusOutput, error) {
-	output := SyncStatusOutput{
-		Configured:   false,
-		Server:       "local SQLite",
-		PendingCount: 0,
-		LastSync:     "N/A (cloud sync removed)",
-	}
-
-	jsonBytes, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		return nil, output, fmt.Errorf("failed to marshal output: %w", err)
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: string(jsonBytes)}},
-	}, output, nil
-}
-
-// SyncNowInput defines the input parameters for the sync_now tool.
-type SyncNowInput struct{}
-
-// SyncNowOutput defines the output structure for the sync_now tool.
-type SyncNowOutput struct {
-	Success bool   `json:"success"`
-	Pushed  int    `json:"pushed"`
-	Pulled  int    `json:"pulled"`
-	Error   string `json:"error,omitempty"`
-}
-
-func (s *Server) registerSyncNowTool() {
-	mcp.AddTool(s.mcp, &mcp.Tool{
-		Name:        "sync_now",
-		Description: `Trigger vault sync immediately. Pushes pending local changes to the vault server and pulls remote changes. Returns counts of pushed and pulled changes. Use this to manually sync when auto-sync is disabled or to force an immediate sync. Requires sync to be configured via 'toki sync login'.`,
-		InputSchema: map[string]interface{}{
-			"type": "object",
-		},
-	}, s.handleSyncNow)
-}
-
-func (s *Server) handleSyncNow(ctx context.Context, req *mcp.CallToolRequest, input SyncNowInput) (*mcp.CallToolResult, SyncNowOutput, error) {
-	output := SyncNowOutput{
-		Success: false,
-		Pushed:  0,
-		Pulled:  0,
-		Error:   "Cloud sync has been removed. Use 'toki export' to backup data.",
 	}
 
 	jsonBytes, err := json.MarshalIndent(output, "", "  ")

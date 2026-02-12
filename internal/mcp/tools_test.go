@@ -716,53 +716,6 @@ func TestHandleDeleteProject(t *testing.T) {
 	})
 }
 
-func TestHandleSyncStatus(t *testing.T) {
-	server, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	t.Run("returns sync status", func(t *testing.T) {
-		input := SyncStatusInput{}
-		result, output, err := server.handleSyncStatus(ctx, &mcp.CallToolRequest{}, input)
-		if err != nil {
-			t.Fatalf("handleSyncStatus failed: %v", err)
-		}
-		if result == nil {
-			t.Fatal("expected non-nil result")
-		}
-		// Cloud sync is removed, so configured should be false
-		if output.Configured {
-			t.Error("sync should not be configured")
-		}
-	})
-}
-
-func TestHandleSyncNow(t *testing.T) {
-	server, cleanup := setupTestServer(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	t.Run("returns sync result", func(t *testing.T) {
-		input := SyncNowInput{}
-		result, output, err := server.handleSyncNow(ctx, &mcp.CallToolRequest{}, input)
-		if err != nil {
-			t.Fatalf("handleSyncNow failed: %v", err)
-		}
-		if result == nil {
-			t.Fatal("expected non-nil result")
-		}
-		// Cloud sync is removed, so success should be false
-		if output.Success {
-			t.Error("sync should not succeed (removed)")
-		}
-		if output.Error == "" {
-			t.Error("should have error message about removed sync")
-		}
-	})
-}
-
 func TestBuildAppliedFilters(t *testing.T) {
 	t.Run("empty input returns empty filters", func(t *testing.T) {
 		input := ListTodosInput{}

@@ -28,6 +28,7 @@ Personal todo and task tracking with projects, tags, priorities, and due dates.
 | `mcp__toki__list_projects` | List all projects |
 | `mcp__toki__add_tag_to_todo` | Tag a todo |
 | `mcp__toki__remove_tag_from_todo` | Untag a todo |
+| `mcp__toki__delete_project` | Delete a project and its todos |
 
 ## Common patterns
 
