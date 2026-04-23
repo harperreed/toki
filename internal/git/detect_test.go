@@ -158,6 +158,62 @@ func TestFindGitRootFromRepoRoot(t *testing.T) {
 	}
 }
 
+func TestFindGitRootFromWorktree(t *testing.T) {
+	repoDir := setupGitRepo(t)
+
+	// Create an initial commit so worktree creation works
+	cmd := exec.Command("git", "commit", "--allow-empty", "-m", "init")
+	cmd.Dir = repoDir
+	env := []string{}
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GIT_DIR=") && !strings.HasPrefix(e, "GIT_WORK_TREE=") {
+			env = append(env, e)
+		}
+	}
+	cmd.Env = env
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create initial commit: %v", err)
+	}
+
+	// Create a worktree
+	worktreeDir := filepath.Join(t.TempDir(), "my-worktree")
+	cmd = exec.Command("git", "worktree", "add", "-b", "test-branch", worktreeDir)
+	cmd.Dir = repoDir
+	cmd.Env = env
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create worktree: %v", err)
+	}
+
+	// FindGitRoot from within the worktree should return the main repo root
+	root, err := FindGitRoot(worktreeDir)
+	if err != nil {
+		t.Fatalf("Failed to find git root from worktree: %v", err)
+	}
+
+	absRepo, _ := filepath.EvalSymlinks(repoDir)
+	absRoot, _ := filepath.EvalSymlinks(root)
+
+	if absRoot != absRepo {
+		t.Errorf("Expected main repo root %s, got %s", absRepo, absRoot)
+	}
+
+	// Also test from a subdirectory within the worktree
+	subDir := filepath.Join(worktreeDir, "sub", "dir")
+	if err := os.MkdirAll(subDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	root, err = FindGitRoot(subDir)
+	if err != nil {
+		t.Fatalf("Failed to find git root from worktree subdir: %v", err)
+	}
+
+	absRoot, _ = filepath.EvalSymlinks(root)
+	if absRoot != absRepo {
+		t.Errorf("Expected main repo root %s from subdir, got %s", absRepo, absRoot)
+	}
+}
+
 func TestFindGitRootWithSymlink(t *testing.T) {
 	repoDir := setupGitRepo(t)
 	tmpDir := t.TempDir()
