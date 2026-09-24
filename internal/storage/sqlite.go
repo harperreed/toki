@@ -29,8 +29,14 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Open with WAL mode and foreign keys
-	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", dbPath)
+	// Open with WAL mode and foreign keys.
+	//
+	// modernc.org/sqlite only processes connection settings passed through the
+	// _pragma query parameter, and applies each one to every pooled connection.
+	// Shorthand keys such as _journal_mode/_foreign_keys/_busy_timeout are
+	// silently ignored, which left the database in rollback-journal mode with
+	// foreign keys disabled.
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
