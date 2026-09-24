@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -423,27 +422,19 @@ func TestDefaultInstallOptions(t *testing.T) {
 }
 
 func TestSkillInstallationErrors(t *testing.T) {
-	t.Run("handles read-only directory gracefully", func(t *testing.T) {
-		// Skip on Windows where permissions work differently
-		if runtime.GOOS == "windows" {
-			t.Skip("skipping permission test on Windows")
-		}
-
+	t.Run("handles blocked skill directory creation", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		// Create .claude directory and make it read-only
+		// A regular file at .claude/skills prevents creating the skill directory.
 		claudeDir := filepath.Join(tmpDir, ".claude")
 		err := os.MkdirAll(claudeDir, 0750) // #nosec G301
 		if err != nil {
 			t.Fatalf("failed to create .claude dir: %v", err)
 		}
-
-		// Make it read-only to prevent skill directory creation
-		err = os.Chmod(claudeDir, 0444) // #nosec G302
+		err = os.WriteFile(filepath.Join(claudeDir, "skills"), nil, 0600) // #nosec G306
 		if err != nil {
-			t.Fatalf("failed to chmod .claude dir: %v", err)
+			t.Fatalf("failed to block skill directory creation: %v", err)
 		}
-		defer func() { _ = os.Chmod(claudeDir, 0750) }() //nolint:gosec // Restore for cleanup
 
 		opts := installSkillOptions{
 			homeDir:     tmpDir,
@@ -453,7 +444,7 @@ func TestSkillInstallationErrors(t *testing.T) {
 
 		err = installSkillWithOptions(opts)
 		if err == nil {
-			t.Error("expected error when directory is read-only")
+			t.Fatal("expected error when skill directory creation is blocked")
 		}
 
 		if !strings.Contains(err.Error(), "failed to create skill directory") {
