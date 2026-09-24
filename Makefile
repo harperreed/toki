@@ -4,14 +4,10 @@ build:
 	go build -o toki ./cmd/toki
 
 test:
-	go test ./internal/... -v
-	go test ./test/... -v
+	go test ./... -v
 
 test-race:
-	# Run charm tests without race detector (badger has internal goroutine races)
-	go test ./internal/charm/... -v
-	# Run all other tests with race detector
-	go test -race ./cmd/... ./internal/git/... ./internal/models/... ./internal/ui/... ./test/...
+	go test -race ./... -v
 
 test-coverage:
 	go test -coverprofile=coverage.out -covermode=atomic ./...
