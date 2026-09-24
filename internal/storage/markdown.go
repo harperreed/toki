@@ -337,7 +337,7 @@ func (s *MarkdownStore) ListProjects() ([]*Project, error) {
 		return nil, err
 	}
 
-	var projects []*Project
+	projects := make([]*Project, 0, len(entries))
 	for _, e := range entries {
 		p, err := e.toModel()
 		if err != nil {
@@ -351,6 +351,9 @@ func (s *MarkdownStore) ListProjects() ([]*Project, error) {
 		return projects[i].Name < projects[j].Name
 	})
 
+	if len(projects) == 0 {
+		return nil, nil
+	}
 	return projects, nil
 }
 
@@ -738,7 +741,7 @@ func (s *MarkdownStore) ListTags() ([]*Tag, error) {
 		}
 	}
 
-	var tags []*Tag
+	tags := make([]*Tag, 0, len(tagSet))
 	for name := range tagSet {
 		tags = append(tags, &Tag{
 			ID:        syntheticTagID(name),
@@ -751,6 +754,9 @@ func (s *MarkdownStore) ListTags() ([]*Tag, error) {
 		return tags[i].Name < tags[j].Name
 	})
 
+	if len(tags) == 0 {
+		return nil, nil
+	}
 	return tags, nil
 }
 
