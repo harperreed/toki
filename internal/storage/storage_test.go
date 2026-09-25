@@ -958,6 +958,51 @@ func TestGetTodoNotFound(t *testing.T) {
 	}
 }
 
+// TestGetTodoByPrefixLiteral ensures SQL LIKE wildcards in the prefix are
+// treated literally, matching the Markdown backend's strings.HasPrefix behavior.
+func TestGetTodoByPrefixLiteral(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todoID := uuid.New()
+	todo := &Todo{
+		ID:          todoID,
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Only todo",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// A valid UUID prefix must still match.
+	got, err := storage.GetTodoByPrefix(todoID.String()[:8])
+	if err != nil {
+		t.Fatalf("valid prefix should match: %v", err)
+	}
+	if got.ID != todoID {
+		t.Errorf("ID mismatch: got %v, want %v", got.ID, todoID)
+	}
+
+	// SQL wildcards must not be interpreted.
+	for _, prefix := range []string{"%", "_", "%%", "____"} {
+		if _, err := storage.GetTodoByPrefix(prefix); err == nil {
+			t.Errorf("prefix %q should not match any todo", prefix)
+		}
+	}
+}
+
 func TestGetTodoByPrefixNotFound(t *testing.T) {
 	storage, cleanup := setupTestDB(t)
 	defer cleanup()
