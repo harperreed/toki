@@ -56,6 +56,7 @@ toki project add <name> [--path <dir>]    # Create project
 toki project list                          # List projects
 toki project set-path <name> <path>        # Link directory
 toki project remove <name>                 # Delete project
+toki project cleanup                       # Remove duplicate projects
 ```
 
 ### Todos
@@ -91,9 +92,48 @@ toki tag list                              # Show all tags
 
 ```bash
 toki setup                                 # Interactive storage configuration wizard
-toki migrate                               # Migrate between SQLite and Markdown backends
+toki migrate --to <sqlite|markdown> [flags] # Migrate between storage backends
+  --to <sqlite|markdown>                    # Target backend
+  --data-dir <dir>                          # Target data directory
+  --force                                   # Allow writing into a non-empty target directory
 toki version                               # Display version information
+toki install-skill [--yes]                 # Install the Claude Code skill
+  --yes, -y                                 # Skip the confirmation prompt
+toki mcp                                   # Start the MCP server (stdio mode)
 ```
+
+### Import & Export
+
+Export your data in several formats, or re-import a YAML export.
+
+```bash
+toki export yaml                           # Export as YAML (default, human-readable)
+toki export json [--pretty]                # Export as JSON
+  --pretty                                  # Pretty-print JSON output
+toki export markdown                       # Export as Markdown checklist
+toki export sqlite --output <file>         # Copy the SQLite database
+  --output, -o <file>                       # Output file path
+
+toki import <file> [--dry-run]             # Import a YAML export
+  --dry-run                                 # Show what would be imported without writing
+```
+
+### Aliases
+
+Most commands have short aliases:
+
+| Command | Aliases |
+|---------|---------|
+| `add` | `a` |
+| `list` | `ls`, `l` |
+| `done` | `d` |
+| `undone` | `ud` |
+| `remove` | `rm` |
+| `project` | `p` |
+| `tag add` / `tag remove` | `a` / `rm`, `r` |
+| `project add` / `project list` | `a` / `ls`, `l` |
+| `project set-path` / `project remove` | `sp` / `rm`, `r` |
+| `export markdown` | `md` |
 
 ## Git-Aware Context
 
