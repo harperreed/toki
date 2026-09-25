@@ -234,6 +234,102 @@ func TestListCommand_DefaultShowsPendingOnly(t *testing.T) {
 	}
 }
 
+// forceBackend writes a config selecting the given storage backend.
+func forceBackend(t *testing.T, configDir, backend string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(configDir, "toki"), 0o750); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+	cfg := fmt.Sprintf(`{"backend":%q}`, backend)
+	if err := os.WriteFile(filepath.Join(configDir, "toki", "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+}
+
+func TestAddCommand_RejectsWhitespaceOnlyDescriptions(t *testing.T) {
+	for _, backend := range []string{"markdown", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			run, configDir := setupTestBinaryWithDirs(t)
+			forceBackend(t, configDir, backend)
+
+			if _, err := run("project", "add", "probe"); err != nil {
+				t.Fatalf("Failed to create project: %v", err)
+			}
+
+			// Spaces-only descriptions must be rejected.
+			if out, err := run("add", "   ", "--project", "probe"); err == nil {
+				t.Fatalf("add of spaces-only description should have failed, output: %s", out)
+			}
+
+			// Padded two-character input trims to under three characters.
+			if out, err := run("add", " ab ", "--project", "probe"); err == nil {
+				t.Fatalf("add of padded two-character description should have failed, output: %s", out)
+			}
+
+			// Nothing should have been stored.
+			listOutput, err := run("list", "--project", "probe")
+			if err != nil {
+				t.Fatalf("Failed to list: %v\n%s", err, listOutput)
+			}
+			if strings.Contains(listOutput, "ab") {
+				t.Errorf("rejected descriptions should not be stored, list output: %s", listOutput)
+			}
+		})
+	}
+}
+
+func TestAddCommand_AcceptsTrimmedThreeCharacterDescription(t *testing.T) {
+	for _, backend := range []string{"markdown", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			run, configDir := setupTestBinaryWithDirs(t)
+			forceBackend(t, configDir, backend)
+
+			if _, err := run("project", "add", "probe"); err != nil {
+				t.Fatalf("Failed to create project: %v", err)
+			}
+
+			if out, err := run("add", "abc", "--project", "probe"); err != nil {
+				t.Fatalf("add of three-character description failed: %v\n%s", err, out)
+			}
+
+			listOutput, err := run("list", "--project", "probe")
+			if err != nil {
+				t.Fatalf("Failed to list: %v\n%s", err, listOutput)
+			}
+			if !strings.Contains(listOutput, "abc") {
+				t.Errorf("accepted description should be stored unchanged, list output: %s", listOutput)
+			}
+		})
+	}
+}
+
+func TestAddCommand_PreservesSurroundingWhitespace(t *testing.T) {
+	for _, backend := range []string{"markdown", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			run, configDir := setupTestBinaryWithDirs(t)
+			forceBackend(t, configDir, backend)
+
+			if _, err := run("project", "add", "probe"); err != nil {
+				t.Fatalf("Failed to create project: %v", err)
+			}
+
+			// Padded three-character input passes validation on its trimmed
+			// length and must be stored unchanged, whitespace included.
+			if out, err := run("add", "  abc  ", "--project", "probe"); err != nil {
+				t.Fatalf("add of padded three-character description failed: %v\n%s", err, out)
+			}
+
+			listOutput, err := run("list", "--project", "probe")
+			if err != nil {
+				t.Fatalf("Failed to list: %v\n%s", err, listOutput)
+			}
+			if !strings.Contains(listOutput, "  abc  ") {
+				t.Errorf("surrounding whitespace should be preserved, list output: %q", listOutput)
+			}
+		})
+	}
+}
+
 func TestDoneCommand_LiteralWildcardPrefix(t *testing.T) {
 	run, configDir := setupTestBinaryWithDirs(t)
 

@@ -22,7 +22,10 @@ var addCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		description := strings.Join(args, " ")
 
-		if len(description) < 3 {
+		// Validate against the whitespace-trimmed description so spaces-only
+		// ("   ") and padded short (" ab ") input are rejected, but store the
+		// accepted description verbatim: surrounding whitespace is preserved.
+		if len(strings.TrimSpace(description)) < 3 {
 			return fmt.Errorf("description must be at least 3 characters")
 		}
 
