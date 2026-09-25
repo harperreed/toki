@@ -4,6 +4,7 @@
 package test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -256,26 +257,56 @@ func TestAddCommand_RejectsWhitespaceOnlyDescriptions(t *testing.T) {
 				t.Fatalf("Failed to create project: %v", err)
 			}
 
-			// Spaces-only descriptions must be rejected.
+			// The project starts empty.
+			if got := exportedTodoCount(t, run); got != 0 {
+				t.Fatalf("expected 0 stored todos before rejections, got %d", got)
+			}
+
+			// Spaces-only descriptions must be rejected and must not be stored.
 			if out, err := run("add", "   ", "--project", "probe"); err == nil {
 				t.Fatalf("add of spaces-only description should have failed, output: %s", out)
+			}
+			if got := exportedTodoCount(t, run); got != 0 {
+				t.Errorf("rejected spaces-only description should not be stored, stored todo count = %d", got)
 			}
 
 			// Padded two-character input trims to under three characters.
 			if out, err := run("add", " ab ", "--project", "probe"); err == nil {
 				t.Fatalf("add of padded two-character description should have failed, output: %s", out)
 			}
-
-			// Nothing should have been stored.
-			listOutput, err := run("list", "--project", "probe")
-			if err != nil {
-				t.Fatalf("Failed to list: %v\n%s", err, listOutput)
-			}
-			if strings.Contains(listOutput, "ab") {
-				t.Errorf("rejected descriptions should not be stored, list output: %s", listOutput)
+			if got := exportedTodoCount(t, run); got != 0 {
+				t.Errorf("rejected padded two-character description should not be stored, stored todo count = %d", got)
 			}
 		})
 	}
+}
+
+// exportedTodoCount returns the number of todos stored across all projects by
+// parsing `toki export json`, which reads directly from the backend. Unlike
+// `toki list`, it counts todos regardless of completion status or how they
+// render, so an unexpectedly stored todo cannot hide behind a substring check.
+func exportedTodoCount(t *testing.T, run func(args ...string) (string, error)) int {
+	t.Helper()
+	out, err := run("export", "json")
+	if err != nil {
+		t.Fatalf("Failed to export: %v\n%s", err, out)
+	}
+	var data struct {
+		Projects []struct {
+			Todos []struct {
+				ID          string `json:"id"`
+				Description string `json:"description"`
+			} `json:"todos"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(out), &data); err != nil {
+		t.Fatalf("Failed to parse export output: %v\n%s", err, out)
+	}
+	count := 0
+	for _, project := range data.Projects {
+		count += len(project.Todos)
+	}
+	return count
 }
 
 func TestAddCommand_AcceptsTrimmedThreeCharacterDescription(t *testing.T) {
