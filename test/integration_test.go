@@ -233,3 +233,49 @@ func TestListCommand_DefaultShowsPendingOnly(t *testing.T) {
 		t.Error("Summary should say 'pending'")
 	}
 }
+
+func TestDoneCommand_LiteralWildcardPrefix(t *testing.T) {
+	run, configDir := setupTestBinaryWithDirs(t)
+
+	// Force the SQLite backend so this exercises the LIKE-based prefix lookup.
+	if err := os.MkdirAll(filepath.Join(configDir, "toki"), 0o750); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(configDir, "toki", "config.json"),
+		[]byte(`{"backend":"sqlite"}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	_, err := run("project", "add", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	// Exactly one todo in the store.
+	_, err = run("add", "only task", "--project", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to add todo: %v", err)
+	}
+
+	// SQL wildcard prefixes must not match: the ID prefix is literal.
+	for _, prefix := range []string{"%", "_"} {
+		if out, err := run("done", prefix); err == nil {
+			t.Fatalf("done %q should have failed, output: %s", prefix, out)
+		}
+	}
+
+	// The todo must remain pending.
+	listOutput, err := run("list", "--project", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to list: %v", err)
+	}
+	if !strings.Contains(listOutput, "only task") {
+		t.Errorf("todo should still be pending, list output: %s", listOutput)
+	}
+	if strings.Contains(listOutput, "✓") {
+		t.Error("todo should not have been marked done")
+	}
+}

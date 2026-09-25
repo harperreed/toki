@@ -289,14 +289,18 @@ func (s *SQLiteStorage) GetTodo(id uuid.UUID) (*Todo, error) {
 }
 
 // GetTodoByPrefix retrieves a todo by ID prefix.
+//
+// The prefix is matched literally: SQL LIKE wildcards (%, _) are escaped so
+// they cannot widen the search, matching the Markdown backend's
+// strings.HasPrefix behavior.
 func (s *SQLiteStorage) GetTodoByPrefix(prefix string) (*Todo, error) {
 	rows, err := s.db.Query(
 		`SELECT t.id, t.project_id, p.name, t.description, t.done, t.priority, t.notes,
 		        t.created_at, t.updated_at, t.completed_at, t.due_date
 		 FROM todos t
 		 JOIN projects p ON t.project_id = p.id
-		 WHERE t.id LIKE ?`,
-		prefix+"%",
+		 WHERE t.id LIKE ? ESCAPE '\'`,
+		escapeLikePrefix(prefix)+"%",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search todos: %w", err)
@@ -331,6 +335,15 @@ func (s *SQLiteStorage) GetTodoByPrefix(prefix string) (*Todo, error) {
 	matches[0].Tags = tags
 
 	return matches[0], nil
+}
+
+// likeEscaper escapes the SQL LIKE wildcard characters so a user-supplied
+// string is matched literally when used with an ESCAPE '\' clause.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// escapeLikePrefix escapes LIKE metacharacters in a literal prefix.
+func escapeLikePrefix(prefix string) string {
+	return likeEscaper.Replace(prefix)
 }
 
 // ListTodos returns todos matching the given filter.
