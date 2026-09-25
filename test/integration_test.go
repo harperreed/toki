@@ -233,3 +233,62 @@ func TestListCommand_DefaultShowsPendingOnly(t *testing.T) {
 		t.Error("Summary should say 'pending'")
 	}
 }
+
+// TestDoneCommand_LiteralPrefixRejectsWildcards is a regression test for
+// issue #11: the SQLite backend passed the prefix straight to SQL LIKE, so
+// with exactly one todo `toki done '%'` marked it done. The prefix must be
+// treated literally (like the Markdown backend's strings.HasPrefix).
+func TestDoneCommand_LiteralPrefixRejectsWildcards(t *testing.T) {
+	run, configDir := setupTestBinaryWithDirs(t)
+
+	// Pin the SQLite backend so this test always exercises GetTodoByPrefix in
+	// the SQLite storage implementation.
+	cfgDir := filepath.Join(configDir, "toki")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.json"), []byte(`{"backend":"sqlite"}`), 0o600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	if _, err := run("project", "add", "test-project"); err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	addOutput, err := run("add", "only todo", "--project", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to add todo: %v\n%s", err, addOutput)
+	}
+	todoPrefix := extractTodoPrefix(addOutput)
+	if todoPrefix == "" {
+		t.Fatalf("Could not extract todo prefix from: %s", addOutput)
+	}
+
+	// With exactly one todo, wildcard prefixes must fail and leave it pending.
+	for _, prefix := range []string{"%", "_"} {
+		if _, err := run("done", prefix); err == nil {
+			t.Errorf("done %q should have failed: wildcard prefix must match literally", prefix)
+		}
+	}
+
+	pendingOutput, err := run("list", "--project", "test-project")
+	if err != nil {
+		t.Fatalf("Failed to list: %v", err)
+	}
+	if !strings.Contains(pendingOutput, "only todo") {
+		t.Errorf("todo should still be pending after wildcard attempts, got:\n%s", pendingOutput)
+	}
+
+	// A valid UUID prefix still marks the todo done.
+	if _, err := run("done", todoPrefix); err != nil {
+		t.Fatalf("Failed to mark done by valid prefix: %v", err)
+	}
+
+	doneOutput, err := run("list", "--project", "test-project", "--done")
+	if err != nil {
+		t.Fatalf("Failed to list done todos: %v", err)
+	}
+	if !strings.Contains(doneOutput, "only todo") {
+		t.Errorf("todo should be marked done by valid prefix, got:\n%s", doneOutput)
+	}
+}

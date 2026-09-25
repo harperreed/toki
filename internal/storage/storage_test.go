@@ -968,6 +968,67 @@ func TestGetTodoByPrefixNotFound(t *testing.T) {
 	}
 }
 
+// TestGetTodoByPrefixTreatsWildcardsLiterally verifies that SQL wildcard
+// characters (% and _) in a prefix are matched literally, mirroring the
+// Markdown backend's strings.HasPrefix behavior. See issue #11.
+func TestGetTodoByPrefixTreatsWildcardsLiterally(t *testing.T) {
+	storage, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := &Project{
+		ID:        uuid.New(),
+		Name:      "test-project",
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := storage.CreateProject(project); err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	todoID := uuid.New()
+	todo := &Todo{
+		ID:          todoID,
+		ProjectID:   project.ID,
+		ProjectName: project.Name,
+		Description: "Only todo",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := storage.CreateTodo(todo); err != nil {
+		t.Fatalf("failed to create todo: %v", err)
+	}
+
+	// A valid UUID prefix must still resolve to the todo.
+	got, err := storage.GetTodoByPrefix(todoID.String()[:8])
+	if err != nil {
+		t.Fatalf("failed to get todo by valid prefix: %v", err)
+	}
+	if got.ID != todoID {
+		t.Errorf("ID mismatch: got %v, want %v", got.ID, todoID)
+	}
+
+	// Wildcard characters must be treated literally, not as SQL patterns.
+	for _, prefix := range []string{"%", "_", "%%", "__", "%_%"} {
+		t.Run("literal_"+prefix, func(t *testing.T) {
+			_, err := storage.GetTodoByPrefix(prefix)
+			if err == nil {
+				t.Fatalf("expected no match for literal prefix %q, but found a todo", prefix)
+			}
+			if !strings.Contains(err.Error(), "no todo found") {
+				t.Errorf("expected 'no todo found' error for prefix %q, got: %v", prefix, err)
+			}
+		})
+	}
+
+	// The todo must be unchanged after the wildcard attempts.
+	still, err := storage.GetTodo(todoID)
+	if err != nil {
+		t.Fatalf("failed to re-read todo: %v", err)
+	}
+	if still.Done {
+		t.Error("todo should not have been marked done by a wildcard prefix")
+	}
+}
+
 func TestDeleteTagNotFound(t *testing.T) {
 	storage, cleanup := setupTestDB(t)
 	defer cleanup()
