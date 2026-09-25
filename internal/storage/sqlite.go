@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,8 +37,7 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	// Shorthand keys such as _journal_mode/_foreign_keys/_busy_timeout are
 	// silently ignored, which left the database in rollback-journal mode with
 	// foreign keys disabled.
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", dbPath)
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -49,6 +49,26 @@ func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	}
 
 	return &SQLiteStorage{db: db}, nil
+}
+
+// sqliteDSN builds a modernc.org/sqlite DSN for dbPath with the connection
+// settings NewSQLiteStorage promises.
+//
+// The path is percent-encoded rather than concatenated: a raw '?' in the path
+// would split the DSN's query string early, so the driver would parse the rest
+// of the path as connection parameters, drop the pragmas, and open the wrong
+// file. The pragmas themselves stay escaped inside a query value, where the
+// driver's url.ParseQuery decodes them back to their exact form.
+func sqliteDSN(dbPath string) string {
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(dbPath), OmitHost: true}
+
+	q := url.Values{}
+	q.Add("_pragma", "journal_mode(WAL)")
+	q.Add("_pragma", "foreign_keys(1)")
+	q.Add("_pragma", "busy_timeout(5000)")
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }
 
 // DefaultDBPath returns the default database path for Toki.

@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -129,6 +131,52 @@ func TestSQLiteForeignKeysCascadeDelete(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("todo rows remaining after project delete = %d, want 0", count)
+	}
+}
+
+// TestSQLitePragmasApplyWithReservedPathCharacters verifies the DSN survives
+// database paths containing URI-reserved characters (?, #, &, %).
+//
+// Building the DSN by string concatenation let a '?' in the path split the
+// query early: the driver parsed the remainder of the path as connection
+// parameters, silently dropped the pragmas, and opened the wrong file.
+func TestSQLitePragmasApplyWithReservedPathCharacters(t *testing.T) {
+	reserved := []string{
+		"plain",
+		"with space",
+		"quest?ion",
+		"hash#tag",
+		"amp&and",
+		"semi;colon",
+		"percent%name",
+		"plus+sign",
+	}
+
+	for _, name := range reserved {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), name)
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatalf("failed to create dir: %v", err)
+			}
+			dbPath := filepath.Join(dir, "toki.db")
+
+			storage, err := NewSQLiteStorage(dbPath)
+			if err != nil {
+				t.Fatalf("failed to create storage: %v", err)
+			}
+			defer func() { _ = storage.Close() }()
+
+			for _, p := range desiredPragmas {
+				if got := pragmaValue(t, storage.db, p.name); got != p.value {
+					t.Errorf("pragma %s = %q, want %q", p.name, got, p.value)
+				}
+			}
+
+			// The database must live at the requested path, not a truncated one.
+			if _, err := os.Stat(dbPath); err != nil {
+				t.Errorf("database not created at %q: %v", dbPath, err)
+			}
+		})
 	}
 }
 
