@@ -54,11 +54,11 @@ var addCmd = &cobra.Command{
 
 		// Handle optional flags
 		if priority, _ := cmd.Flags().GetString("priority"); priority != "" {
-			priority = strings.ToLower(priority)
-			if priority != "low" && priority != "medium" && priority != "high" {
-				return fmt.Errorf("priority must be low, medium, or high")
+			normalized, err := normalizePriority(priority)
+			if err != nil {
+				return err
 			}
-			todo.Priority = priority
+			todo.Priority = normalized
 		}
 
 		if notes, _ := cmd.Flags().GetString("notes"); notes != "" {

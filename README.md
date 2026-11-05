@@ -67,7 +67,7 @@ toki list [flags]                          # List todos (aliases: ls, l)
   --tag, -t <tag>                          # Filter by tag
   --done                                   # Show completed todos
   --pending                                # Show pending todos only
-  --priority <level>                       # Filter by priority
+  --priority <low|medium|high>             # Filter by priority (any case)
 
 toki done <uuid-prefix> [uuid-prefix...]   # Mark complete (alias: d)
 toki undone <uuid-prefix> [uuid-prefix...] # Mark incomplete (alias: ud)

@@ -82,7 +82,16 @@ func mustNoError(t *testing.T, err error) {
 func verifyMigratedTokiData(t *testing.T, dst Storage, projects []*Project, todos []*Todo) {
 	t.Helper()
 
-	// Verify projects
+	verifyMigratedProjects(t, dst, projects)
+	for _, orig := range todos {
+		verifyMigratedTodo(t, dst, orig)
+	}
+}
+
+// verifyMigratedProjects checks that every project survived the migration.
+func verifyMigratedProjects(t *testing.T, dst Storage, projects []*Project) {
+	t.Helper()
+
 	for _, orig := range projects {
 		got, err := dst.GetProject(orig.ID)
 		if err != nil {
@@ -96,52 +105,60 @@ func verifyMigratedTokiData(t *testing.T, dst Storage, projects []*Project, todo
 			t.Errorf("project path mismatch: want %q, got %q", orig.DirectoryPath, got.DirectoryPath)
 		}
 	}
+}
 
-	// Verify todos
-	for _, orig := range todos {
-		got, err := dst.GetTodo(orig.ID)
-		if err != nil {
-			t.Errorf("todo %s (%s) not found in destination: %v", orig.Description, orig.ID, err)
-			continue
-		}
-		if got.Description != orig.Description {
-			t.Errorf("todo description mismatch: want %q, got %q", orig.Description, got.Description)
-		}
-		if got.Done != orig.Done {
-			t.Errorf("todo done mismatch for %q: want %v, got %v", orig.Description, orig.Done, got.Done)
-		}
-		if got.Priority != orig.Priority {
-			t.Errorf("todo priority mismatch for %q: want %q, got %q", orig.Description, orig.Priority, got.Priority)
-		}
-		if got.Notes != orig.Notes {
-			t.Errorf("todo notes mismatch for %q: want %q, got %q", orig.Description, orig.Notes, got.Notes)
-		}
+// verifyMigratedTodo checks that a single todo survived the migration intact.
+func verifyMigratedTodo(t *testing.T, dst Storage, orig *Todo) {
+	t.Helper()
 
-		// Check tags
-		origTags := make([]string, len(orig.Tags))
-		copy(origTags, orig.Tags)
-		sort.Strings(origTags)
+	got, err := dst.GetTodo(orig.ID)
+	if err != nil {
+		t.Errorf("todo %s (%s) not found in destination: %v", orig.Description, orig.ID, err)
+		return
+	}
+	if got.Description != orig.Description {
+		t.Errorf("todo description mismatch: want %q, got %q", orig.Description, got.Description)
+	}
+	if got.Done != orig.Done {
+		t.Errorf("todo done mismatch for %q: want %v, got %v", orig.Description, orig.Done, got.Done)
+	}
+	if got.Priority != orig.Priority {
+		t.Errorf("todo priority mismatch for %q: want %q, got %q", orig.Description, orig.Priority, got.Priority)
+	}
+	if got.Notes != orig.Notes {
+		t.Errorf("todo notes mismatch for %q: want %q, got %q", orig.Description, orig.Notes, got.Notes)
+	}
 
-		gotTags := make([]string, len(got.Tags))
-		copy(gotTags, got.Tags)
-		sort.Strings(gotTags)
+	verifyMigratedTags(t, orig, got)
 
-		if len(origTags) != len(gotTags) {
-			t.Errorf("todo tags count mismatch for %q: want %d, got %d", orig.Description, len(origTags), len(gotTags))
-		} else {
-			for i := range origTags {
-				if origTags[i] != gotTags[i] {
-					t.Errorf("todo tags mismatch for %q at index %d: want %q, got %q", orig.Description, i, origTags[i], gotTags[i])
-				}
-			}
-		}
+	// Check completed status
+	if (orig.CompletedAt == nil) != (got.CompletedAt == nil) {
+		t.Errorf("todo completedAt nil mismatch for %q: orig=%v, got=%v", orig.Description, orig.CompletedAt, got.CompletedAt)
+	}
+	if (orig.DueDate == nil) != (got.DueDate == nil) {
+		t.Errorf("todo dueDate nil mismatch for %q: orig=%v, got=%v", orig.Description, orig.DueDate, got.DueDate)
+	}
+}
 
-		// Check completed status
-		if (orig.CompletedAt == nil) != (got.CompletedAt == nil) {
-			t.Errorf("todo completedAt nil mismatch for %q: orig=%v, got=%v", orig.Description, orig.CompletedAt, got.CompletedAt)
-		}
-		if (orig.DueDate == nil) != (got.DueDate == nil) {
-			t.Errorf("todo dueDate nil mismatch for %q: orig=%v, got=%v", orig.Description, orig.DueDate, got.DueDate)
+// verifyMigratedTags compares the todo's tags regardless of ordering.
+func verifyMigratedTags(t *testing.T, orig, got *Todo) {
+	t.Helper()
+
+	origTags := make([]string, len(orig.Tags))
+	copy(origTags, orig.Tags)
+	sort.Strings(origTags)
+
+	gotTags := make([]string, len(got.Tags))
+	copy(gotTags, got.Tags)
+	sort.Strings(gotTags)
+
+	if len(origTags) != len(gotTags) {
+		t.Errorf("todo tags count mismatch for %q: want %d, got %d", orig.Description, len(origTags), len(gotTags))
+		return
+	}
+	for i := range origTags {
+		if origTags[i] != gotTags[i] {
+			t.Errorf("todo tags mismatch for %q at index %d: want %q, got %q", orig.Description, i, origTags[i], gotTags[i])
 		}
 	}
 }

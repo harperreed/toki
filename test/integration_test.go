@@ -406,3 +406,83 @@ func TestDoneCommand_LiteralWildcardPrefix(t *testing.T) {
 		t.Error("todo should not have been marked done")
 	}
 }
+
+// setupPriorityFixture creates a project with one high and one low priority
+// todo, stored lowercase by `toki add`, and returns the runner.
+func setupPriorityFixture(t *testing.T, backend string) func(args ...string) (string, error) {
+	t.Helper()
+
+	run, configDir := setupTestBinaryWithDirs(t)
+	forceBackend(t, configDir, backend)
+
+	if out, err := run("project", "add", "probe"); err != nil {
+		t.Fatalf("Failed to create project: %v\n%s", err, out)
+	}
+	if out, err := run("add", "high task", "--project", "probe", "--priority", "High"); err != nil {
+		t.Fatalf("Failed to add high priority todo: %v\n%s", err, out)
+	}
+	if out, err := run("add", "low task", "--project", "probe", "--priority", "low"); err != nil {
+		t.Fatalf("Failed to add low priority todo: %v\n%s", err, out)
+	}
+
+	return run
+}
+
+// assertPriorityFilter checks that listing with the given spelling finds the
+// high priority todo (and never the low one) when wantHigh is set, and does not
+// find the high priority todo when wantHigh is unset.
+func assertPriorityFilter(t *testing.T, run func(args ...string) (string, error), spelling string, wantHigh bool) {
+	t.Helper()
+
+	listOutput, err := run("list", "--project", "probe", "--priority", spelling)
+	if err != nil {
+		t.Fatalf("list --priority %q failed: %v\n%s", spelling, err, listOutput)
+	}
+
+	foundHigh := strings.Contains(listOutput, "high task")
+	if foundHigh != wantHigh {
+		t.Errorf("list --priority %q: found high priority todo = %v, want %v; output: %s",
+			spelling, foundHigh, wantHigh, listOutput)
+	}
+	if foundHigh && strings.Contains(listOutput, "low task") {
+		t.Errorf("list --priority %q should not list the low priority todo, output: %s", spelling, listOutput)
+	}
+}
+
+// assertPriorityRejected checks that listing with an unknown priority fails
+// with the same error `toki add` reports and never prints an empty result.
+func assertPriorityRejected(t *testing.T, run func(args ...string) (string, error), unknown string) {
+	t.Helper()
+
+	out, err := run("list", "--project", "probe", "--priority", unknown)
+	if err == nil {
+		t.Fatalf("list --priority %q should have failed, output: %s", unknown, out)
+	}
+	if !strings.Contains(out, "priority must be low, medium, or high") {
+		t.Errorf("list --priority %q should report the add error, output: %s", unknown, out)
+	}
+	if strings.Contains(out, "No todos found") {
+		t.Errorf("list --priority %q must not print an empty result, output: %s", unknown, out)
+	}
+}
+
+// TestListCommand_PriorityNormalization verifies that `toki list --priority`
+// accepts the same priorities as `toki add` in any case, and rejects unknown
+// ones with the same error.
+func TestListCommand_PriorityNormalization(t *testing.T) {
+	for _, backend := range []string{"markdown", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			run := setupPriorityFixture(t, backend)
+
+			for _, spelling := range []string{"High", "HIGH", "high", "hIgH"} {
+				assertPriorityFilter(t, run, spelling, true)
+			}
+			for _, spelling := range []string{"Low", "MEDIUM"} {
+				assertPriorityFilter(t, run, spelling, false)
+			}
+			for _, unknown := range []string{"urgent", "Medium ", "critical"} {
+				assertPriorityRejected(t, run, unknown)
+			}
+		})
+	}
+}

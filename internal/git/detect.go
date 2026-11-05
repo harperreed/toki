@@ -74,7 +74,7 @@ func resolveWorktreeRoot(gitFilePath string) (string, error) {
 		return "", err
 	}
 
-	info, err := os.Stat(gitdir)
+	info, err := os.Stat(gitdir) // #nosec G703 - gitdir is the target of the .git pointer being inspected
 	if err != nil {
 		return "", fmt.Errorf("invalid gitdir target %q: %w", gitdir, err)
 	}
@@ -149,7 +149,7 @@ func mainRootForGitDir(commonGitDir string) (string, error) {
 // affect working tree resolution are read, and unknown keys or sections are
 // ignored.
 func readCoreConfig(gitDir string) (worktree string, bare bool, err error) {
-	data, err := os.ReadFile(filepath.Join(gitDir, "config")) // #nosec G304 - path is the git dir being inspected
+	data, err := os.ReadFile(filepath.Join(gitDir, "config")) // #nosec G304 G703 - path is the git dir being inspected
 	if err != nil {
 		return "", false, err
 	}
@@ -277,7 +277,7 @@ func resolveCommonGitDir(worktreeGitDir string) (string, error) {
 // readCommonDir reads the "commondir" file inside a worktree gitdir. Its
 // contents are relative to the worktree gitdir (typically "../..").
 func readCommonDir(worktreeGitDir string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(worktreeGitDir, "commondir")) // #nosec G304 - path is the worktree git dir being inspected
+	data, err := os.ReadFile(filepath.Join(worktreeGitDir, "commondir")) // #nosec G304 G703 - path is the worktree git dir being inspected
 	if err != nil {
 		return "", err
 	}
@@ -305,8 +305,8 @@ func worktreeCommonGitDir(worktreeGitDir string) (string, error) {
 		return "", fmt.Errorf("gitdir %q is not a worktree gitdir", worktreeGitDir)
 	}
 
-	commonDir := filepath.Dir(filepath.Dir(dir)) // <main>/.git
-	if info, err := os.Stat(commonDir); err != nil || !info.IsDir() {
+	commonDir := filepath.Dir(filepath.Dir(dir))                      // <main>/.git
+	if info, err := os.Stat(commonDir); err != nil || !info.IsDir() { // #nosec G703 - commonDir is derived from the worktree gitdir being inspected
 		return "", fmt.Errorf("invalid worktree gitdir %q: main .git directory missing", worktreeGitDir)
 	}
 
