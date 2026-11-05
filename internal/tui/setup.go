@@ -170,7 +170,7 @@ func (m SetupModel) View() string {
 		b.WriteString("\n")
 
 	case StepDataDir:
-		b.WriteString(fmt.Sprintf("  Backend: %s\n\n", m.inputs[0].Value()))
+		fmt.Fprintf(&b, "  Backend: %s\n\n", m.inputs[0].Value())
 		b.WriteString(stepStyle.Render("Step 2 of 2: Data Directory"))
 		b.WriteString("\n")
 		b.WriteString(promptStyle.Render(fmt.Sprintf("(press Enter for default: %s)", defaultDataDir())))
@@ -181,8 +181,8 @@ func (m SetupModel) View() string {
 	case StepDone:
 		b.WriteString(successStyle.Render("✓ Configuration saved!"))
 		b.WriteString("\n\n")
-		b.WriteString(fmt.Sprintf("  Backend:        %s\n", m.inputs[0].Value()))
-		b.WriteString(fmt.Sprintf("  Data directory:  %s\n", m.inputs[1].Value()))
+		fmt.Fprintf(&b, "  Backend:        %s\n", m.inputs[0].Value())
+		fmt.Fprintf(&b, "  Data directory:  %s\n", m.inputs[1].Value())
 		b.WriteString("\n")
 	}
 

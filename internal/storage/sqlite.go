@@ -407,6 +407,7 @@ func (s *SQLiteStorage) ListTodos(filter *TodoFilter) ([]*Todo, error) {
 	}
 
 	if len(conditions) > 0 {
+		// #nosec G202 - conditions are fixed clause fragments; user values are bound as parameters.
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 

@@ -184,7 +184,7 @@ func newGitWorktree(t *testing.T) (repoDir, worktreeDir string) {
 	}
 
 	worktreeDir = filepath.Join(t.TempDir(), "my-worktree")
-	add := exec.Command("git", "worktree", "add", "-b", "test-branch", worktreeDir)
+	add := exec.Command("git", "worktree", "add", "-b", "test-branch", worktreeDir) // #nosec G204 - test fixture builds git args from temp dirs
 	add.Dir = repoDir
 	add.Env = gitEnv()
 	if out, err := add.CombinedOutput(); err != nil {
@@ -240,7 +240,7 @@ func newBareWorktree(t *testing.T) (bareDir, worktreeDir string) {
 
 	run := func(dir string, args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
+		cmd := exec.Command("git", args...) // #nosec G204 - test fixture builds git args from temp dirs
 		cmd.Dir = dir
 		cmd.Env = gitEnv()
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -418,7 +418,7 @@ func TestFindGitRootWithSymlink(t *testing.T) {
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) // #nosec G204 - test fixture builds git args from temp dirs
 	cmd.Dir = dir
 	cmd.Env = gitEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {

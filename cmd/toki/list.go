@@ -51,7 +51,11 @@ var listCmd = &cobra.Command{
 		}
 
 		if priorityFlag, _ := cmd.Flags().GetString("priority"); priorityFlag != "" {
-			priority = &priorityFlag
+			normalized, err := normalizePriority(priorityFlag)
+			if err != nil {
+				return err
+			}
+			priority = &normalized
 		}
 
 		var tag *string
@@ -183,7 +187,7 @@ func init() {
 	listCmd.Flags().StringP("tag", "t", "", "filter by tag")
 	listCmd.Flags().Bool("done", false, "show completed todos")
 	listCmd.Flags().Bool("pending", false, "show pending todos only")
-	listCmd.Flags().String("priority", "", "filter by priority")
+	listCmd.Flags().String("priority", "", "filter by priority (low, medium, high)")
 
 	rootCmd.AddCommand(listCmd)
 }
